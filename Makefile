@@ -7,23 +7,21 @@ help:
 target_dirs := bin examples tests trainer
 
 test_all:	## run tests and don't stop on an error.
-	coverage run -m pytest trainer tests
+	uv run coverage run -m pytest trainer tests
 
 test:	## run tests.
-	coverage run -m pytest -x trainer tests
+	uv run coverage run -m pytest -x trainer tests
 
 test_failed:  ## only run tests failed the last time.
-	coverage run -m pytest --ff trainer tests
+	uv run coverage run -m pytest --ff trainer tests
 
 style:	## update code style.
-	ruff format ${target_dirs}
+	uv run --only-dev ruff format ${target_dirs}
 
 lint:	## run linter.
-	ruff check ${target_dirs}
-
-dev-deps:  ## install development deps
-	pip install -r requirements.dev.txt
+	uv run --only-dev ruff check ${target_dirs}
+	uv run --only-dev ruff format --check ${target_dirs}
 
 install:	## install 🐸 Trainer for development.
-	pip install -e .[dev,test]
-	pre-commit install
+	uv sync --all-extras
+	uv run pre-commit install

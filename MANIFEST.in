@@ -1,6 +1,5 @@
 include README.md
 include LICENSE.txt
-include requirements.dev.txt
 recursive-include trainer *.json
 recursive-include trainer *.html
 recursive-include trainer *.png

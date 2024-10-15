@@ -29,28 +29,36 @@ If you have a new feature or a bug to squash, go ahead and send a ✨**PR**✨.
 Please use the following steps for a ✨**PR**✨.
 Let us know if you encounter a problem along the way.
 
-The following steps are tested on an Ubuntu system.
+The following steps are tested on an Ubuntu system and require
+[uv](https://docs.astral.sh/uv/) for virtual environment management. Choose your
+preferred [installation
+method](https://docs.astral.sh/uv/getting-started/installation/), e.g. the
+standalone installer:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 1. Fork 👟[https://github.com/idiap/coqui-ai-Trainer] by clicking the fork button at the top right corner of the project page.
 
 2. Clone 👟 and add the main repo as a new remote named ```upsteam```.
 
     ```bash
-    $ git clone git@github.com:<your Github name>/coqui-ai-Trainer.git
-    $ cd coqui-ai-Trainer
-    $ git remote add upstream https://github.com/idiap/coqui-ai-Trainer.git
+    git clone git@github.com:<your Github name>/coqui-ai-Trainer.git
+    cd coqui-ai-Trainer
+    git remote add upstream https://github.com/idiap/coqui-ai-Trainer.git
     ```
 
 3. Install 👟 for development.
 
     ```bash
-    $ make install
+    make install
     ```
 
 4. Create a new branch with an informative name for your goal.
 
     ```bash
-    $ git checkout -b an_informative_name_for_my_branch
+    git checkout -b an_informative_name_for_my_branch
     ```
 
 5. Implement your changes on your new branch.
@@ -62,34 +70,37 @@ The following steps are tested on an Ubuntu system.
 8. Run the tests to see how your updates work with the rest of the project. You can repeat this step multiple times as you implement your changes to make sure you are on the right direction.
 
     ```bash
-    $ make test  # stop at the first error
-    $ make test_all  # run all the tests, report all the errors
+    make test  # stop at the first error
+    make test_all  # run all the tests, report all the errors
     ```
 
 9. Format your code. We use ```ruff``` for code formatting.
 
     ```bash
-    $ make style
+    make style
     ```
 
-10. Run the linter and correct the issues raised. We use ```ruff``` for linting.  It helps to enforce a coding standard, offers simple refactoring suggestions.
+10. Run the linter and correct the issues raised. We use ```ruff``` for linting.
+    It helps to enforce a coding standard, offers simple refactoring
+    suggestions. The formatter and linter are also run automatically via
+    pre-commit.
 
     ```bash
-    $ make lint
+    make lint
     ```
 
 11. When things are good, add new files and commit your changes.
 
     ```bash
-    $ git add my_file1.py my_file2.py ...
-    $ git commit
+    git add my_file1.py my_file2.py ...
+    git commit
     ```
 
     It's a good practice to regularly sync your local copy of the project with the upstream code to keep up with the recent updates.
 
     ```bash
-    $ git fetch upstream
-    $ git rebase upstream/main
+    git fetch upstream
+    git rebase upstream/main
     ```
 
 12. Send a PR to ```main``` branch.
@@ -97,7 +108,7 @@ The following steps are tested on an Ubuntu system.
     Push your branch to your fork.
 
     ```bash
-    $ git push -u origin an_informative_name_for_my_branch
+    git push -u origin an_informative_name_for_my_branch
     ```
 
     Then go to your fork's Github page and click on 'Pull request' to send your ✨**PR**✨.

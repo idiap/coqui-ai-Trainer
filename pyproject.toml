@@ -46,22 +46,23 @@ dependencies = [
     "psutil>=5",
     "soundfile>=0.12.0",
     "tensorboard>=2.17.0",
-    "torch>=2.0",
+    "torch>=2.1; python_version < '3.12'",
+    "torch>=2.3; python_version >= '3.12'",
 ]
 
 [project.optional-dependencies]
-# Development dependencies
-dev = [
-    "coverage>=7",
-    "pre-commit>=3",
-    "pytest>=8",
-    "ruff==0.4.10",
-    "tomli>=2; python_version < '3.11'",
-]
 # Dependencies for running the tests
 test = [
     "accelerate>=0.20.0",
     "torchvision>=0.15.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "coverage>=7",
+    "pre-commit>=3",
+    "pytest>=8",
+    "ruff==0.6.9",
 ]
 
 [project.urls]
