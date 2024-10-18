@@ -10,7 +10,7 @@ name = "coqui-tts-trainer"
 version = "0.1.5"
 description = "General purpose model trainer for PyTorch that is more flexible than it should be, by 🐸Coqui."
 readme = "README.md"
-requires-python = ">=3.9, <3.13"
+requires-python = ">=3.9, <3.14"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Eren Gölge", email = "egolge@coqui.ai"}
@@ -34,6 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -43,25 +44,27 @@ dependencies = [
     "fsspec>=2023.6.0",
     "numpy>=1.24.3; python_version < '3.12'",
     "numpy>=1.26.0; python_version >= '3.12'",
+    "packaging>=21.0",
     "psutil>=5",
     "soundfile>=0.12.0",
     "tensorboard>=2.17.0",
-    "torch>=2.0",
+    "torch>=2.1; python_version < '3.12'",
+    "torch>=2.3; python_version >= '3.12'",
 ]
 
 [project.optional-dependencies]
-# Development dependencies
-dev = [
-    "coverage>=7",
-    "pre-commit>=3",
-    "pytest>=8",
-    "ruff==0.4.10",
-    "tomli>=2; python_version < '3.11'",
-]
 # Dependencies for running the tests
 test = [
     "accelerate>=0.20.0",
     "torchvision>=0.15.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "coverage>=7",
+    "pre-commit>=3",
+    "pytest>=8",
+    "ruff==0.6.9",
 ]
 
 [project.urls]
@@ -71,7 +74,6 @@ Issues = "https://github.com/idiap/coqui-ai-Trainer/issues"
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
 lint.extend-select = [
     "B",  # bugbear
     "I",  # import sorting

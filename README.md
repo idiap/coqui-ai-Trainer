@@ -13,18 +13,18 @@ Fork of the [original, unmaintained repository](https://github.com/coqui-ai/Trai
 
 ## Installation
 
+From PyPI:
+
+```console
+pip install coqui-tts-trainer
+```
+
 From Github:
 
 ```console
 git clone https://github.com/idiap/coqui-ai-Trainer
 cd coqui-ai-Trainer
-make install
-```
-
-From PyPI:
-
-```console
-pip install coqui-tts-trainer
+pip install -e .
 ```
 
 ## Implementing a model

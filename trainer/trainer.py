@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional, Union
 import torch
 import torch.distributed as dist
 from coqpit import Coqpit
+from packaging.version import Version
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP_th
 from torch.utils.data import DataLoader
@@ -883,7 +884,10 @@ class Trainer:
 
     def _get_autocast_args(self, mixed_precision: bool, precision: str):
         device = "cpu"
-        dtype = torch.get_autocast_cpu_dtype()
+        if Version(torch.__version__) >= Version("2.4"):
+            dtype = torch.get_autocast_dtype("cpu")
+        else:
+            dtype = torch.get_autocast_cpu_dtype()
         if self.use_cuda:
             device = "cuda"
             dtype = torch.float32
