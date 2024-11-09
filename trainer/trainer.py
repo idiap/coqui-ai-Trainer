@@ -1,3 +1,4 @@
+import functools
 import gc
 import importlib
 import logging
@@ -25,6 +26,7 @@ from trainer.generic_utils import (
     count_parameters,
     get_experiment_folder_path,
     get_git_branch,
+    is_pytorch_at_least_2_3,
     is_pytorch_at_least_2_4,
     isimplemented,
     remove_experiment_folder,
@@ -59,6 +61,11 @@ logger = logging.getLogger("trainer")
 
 if is_apex_available():
     from apex import amp  # pylint: disable=import-error
+
+if is_pytorch_at_least_2_3:
+    GradScaler = functools.partial(torch.GradScaler, device="cuda")
+else:
+    GradScaler = torch.cuda.amp.GradScaler
 
 
 class Trainer:
@@ -329,7 +336,7 @@ class Trainer:
             if self.use_apex:
                 self.scaler = None
                 self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O1")
-            self.scaler = torch.cuda.amp.GradScaler()
+            self.scaler = GradScaler()
         else:
             self.scaler = None
 
@@ -338,7 +345,7 @@ class Trainer:
             (self.model, self.optimizer, self.scaler, self.restore_step, self.restore_epoch) = self.restore_model(
                 self.config, args.restore_path, self.model, self.optimizer, self.scaler
             )
-            self.scaler = torch.cuda.amp.GradScaler()
+            self.scaler = GradScaler()
 
         # setup scheduler
         self.scheduler = self.get_scheduler(self.model, self.config, self.optimizer)
@@ -590,8 +597,8 @@ class Trainer:
         restore_path: Union[str, os.PathLike[Any]],
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
-        scaler: torch.cuda.amp.GradScaler = None,
-    ) -> tuple[nn.Module, torch.optim.Optimizer, torch.cuda.amp.GradScaler, int]:
+        scaler: Optional["torch.GradScaler"] = None,
+    ) -> tuple[nn.Module, torch.optim.Optimizer, "torch.GradScaler", int]:
         """Restore training from an old run. It restores model, optimizer, AMP scaler and training stats.
 
         Args:
@@ -599,10 +606,10 @@ class Trainer:
             restore_path (str): Path to the restored training run.
             model (nn.Module): Model to restored.
             optimizer (torch.optim.Optimizer): Optimizer to restore.
-            scaler (torch.cuda.amp.GradScaler, optional): AMP scaler to restore. Defaults to None.
+            scaler (torch.GradScaler, optional): AMP scaler to restore. Defaults to None.
 
         Returns:
-            Tuple[nn.Module, torch.optim.Optimizer, torch.cuda.amp.GradScaler, int]: [description]
+            Tuple[nn.Module, torch.optim.Optimizer, torch.GradScaler, int]: [description]
         """
 
         def _restore_list_objs(states, obj):
@@ -948,7 +955,7 @@ class Trainer:
     def _compute_grad_norm(self, optimizer: torch.optim.Optimizer):
         return torch.norm(torch.cat([param.grad.view(-1) for param in self.master_params(optimizer)], dim=0), p=2)
 
-    def _grad_clipping(self, grad_clip: float, optimizer: torch.optim.Optimizer, scaler: torch.cuda.amp.GradScaler):
+    def _grad_clipping(self, grad_clip: float, optimizer: torch.optim.Optimizer, scaler: Optional["torch.GradScaler"]):
         """Perform gradient clipping"""
         if grad_clip is not None and grad_clip > 0:
             if scaler:
@@ -964,7 +971,7 @@ class Trainer:
         batch: dict,
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
-        scaler: torch.cuda.amp.GradScaler,
+        scaler: "torch.GradScaler",
         criterion: nn.Module,
         scheduler: Union[torch.optim.lr_scheduler._LRScheduler, list, dict],  # pylint: disable=protected-access
         config: Coqpit,
