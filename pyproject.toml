@@ -10,7 +10,7 @@ name = "coqui-tts-trainer"
 version = "0.2.0"
 description = "General purpose model trainer for PyTorch that is more flexible than it should be, by 🐸Coqui."
 readme = "README.md"
-requires-python = ">=3.9, <3.13"
+requires-python = ">=3.9, <3.14"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Eren Gölge", email = "egolge@coqui.ai"}
@@ -32,6 +32,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -78,7 +79,6 @@ Issues = "https://github.com/idiap/coqui-ai-Trainer/issues"
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
 lint.extend-select = [
     "B",  # bugbear
     "I",  # import sorting
