@@ -1,5 +1,5 @@
 import os
-from typing import Any, Optional
+from typing import Any
 
 import torch
 
@@ -36,7 +36,7 @@ class ClearMLLogger(TensorboardLogger):
         local_path: str,
         project_name: str,
         task_name: str,
-        tags: Optional[str] = None,
+        tags: str | None = None,
     ) -> None:
         self._context = None
         self.local_path = local_path

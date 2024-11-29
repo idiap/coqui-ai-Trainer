@@ -1,8 +1,9 @@
 # edited from https://github.com/fastai/imagenet-fast/blob/master/imagenet_nv/distributed.py
 import logging
 import os
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
 
 import torch
 import torch.distributed as dist
@@ -29,7 +30,7 @@ def is_main_process() -> bool:
 
 def rank_zero_only(fn: Callable) -> Callable:
     @wraps(fn)
-    def wrapped_fn(*args: Any, **kwargs: Any) -> Optional[Any]:
+    def wrapped_fn(*args: Any, **kwargs: Any) -> Any | None:
         if is_main_process():
             return fn(*args, **kwargs)
         return None

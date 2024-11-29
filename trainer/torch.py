@@ -1,6 +1,5 @@
 import contextlib
 from collections.abc import Iterator
-from typing import Optional
 
 import numpy as np
 import torch
@@ -36,8 +35,8 @@ class DistributedSamplerWrapper(DistributedSampler):
         self,
         sampler,
         *,
-        num_replicas: Optional[int] = None,
-        rank: Optional[int] = None,
+        num_replicas: int | None = None,
+        rank: int | None = None,
         shuffle: bool = True,
         seed: int = 0,
     ) -> None:
