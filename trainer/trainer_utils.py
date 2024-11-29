@@ -3,7 +3,6 @@ import importlib.util
 import os
 import random
 from collections.abc import Iterator
-from typing import Optional
 
 import numpy as np
 import torch
@@ -151,8 +150,8 @@ def get_optimizer(
     optimizer_name: str,
     optimizer_params: dict,
     lr: float,
-    model: Optional[torch.nn.Module] = None,
-    parameters: Optional[Iterator[Parameter]] = None,
+    model: torch.nn.Module | None = None,
+    parameters: Iterator[Parameter] | None = None,
 ) -> torch.optim.Optimizer:
     """Find, initialize and return a Torch optimizer.
 

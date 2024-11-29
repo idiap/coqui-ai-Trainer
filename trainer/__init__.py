@@ -6,4 +6,4 @@ from trainer.trainer import Trainer
 
 __version__ = importlib.metadata.version("coqui-tts-trainer")
 
-__all__ = ["TrainerArgs", "TrainerConfig", "Trainer", "TrainerModel"]
+__all__ = ["Trainer", "TrainerArgs", "TrainerConfig", "TrainerModel"]

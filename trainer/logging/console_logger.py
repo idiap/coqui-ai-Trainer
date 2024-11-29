@@ -2,7 +2,7 @@ import datetime
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any
 
 from trainer.utils.distributed import rank_zero_only
 
@@ -44,7 +44,7 @@ class ConsoleLogger:
         return now.strftime("%Y-%m-%d %H:%M:%S")
 
     @rank_zero_only
-    def print_epoch_start(self, epoch: int, max_epoch: int, output_path: Optional[Union[str, os.PathLike[Any]]] = None):
+    def print_epoch_start(self, epoch: int, max_epoch: int, output_path: str | os.PathLike[Any] | None = None):
         self.log_with_flush(
             f"\n{tcolors.UNDERLINE}{tcolors.BOLD} > EPOCH: {epoch}/{max_epoch}{tcolors.ENDC}",
         )

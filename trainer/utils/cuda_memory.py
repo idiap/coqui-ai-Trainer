@@ -60,7 +60,7 @@ def get_cuda_blocked_memory() -> int:
 
 def is_cuda_out_of_memory(exception: Exception) -> bool:
     return (
-        isinstance(exception, (RuntimeError, torch.cuda.OutOfMemoryError))
+        isinstance(exception, (RuntimeError | torch.cuda.OutOfMemoryError))
         and len(exception.args) == 1
         and "CUDA out of memory." in exception.args[0]
     )
