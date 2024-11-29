@@ -3,7 +3,7 @@ import os
 import subprocess
 from collections.abc import ItemsView
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import fsspec
 import torch
@@ -78,14 +78,14 @@ def get_commit_hash() -> str:
     return commit
 
 
-def get_experiment_folder_path(root_path: Union[str, os.PathLike[Any]], model_name: str) -> Path:
+def get_experiment_folder_path(root_path: str | os.PathLike[Any], model_name: str) -> Path:
     """Get an experiment folder path with the current date and time."""
     date_str = datetime.datetime.now().strftime("%B-%d-%Y_%I+%M%p")
     commit_hash = get_commit_hash()
     return Path(root_path) / f"{model_name}-{date_str}-{commit_hash}"
 
 
-def remove_experiment_folder(experiment_path: Union[str, os.PathLike[Any]]) -> None:
+def remove_experiment_folder(experiment_path: str | os.PathLike[Any]) -> None:
     """Check folder if there is a checkpoint, otherwise remove the folder."""
     experiment_path = str(experiment_path)
     fs = fsspec.get_mapper(experiment_path).fs

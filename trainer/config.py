@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any
 
 from coqpit import Coqpit
 
@@ -50,13 +50,13 @@ class TrainerArgs(Coqpit):
         default=False,
         metadata={"help": "Start with evaluation and test."},
     )
-    small_run: Optional[int] = field(
+    small_run: int | None = field(
         default=None,
         metadata={
             "help": "Only use a subset of the samples for debugging. Set the number of samples to use. Defaults to None. "
         },
     )
-    gpu: Optional[int] = field(
+    gpu: int | None = field(
         default=None, metadata={"help": "GPU ID to use if ```CUDA_VISIBLE_DEVICES``` is not set. Defaults to None."}
     )
     # only for DDP
@@ -97,14 +97,14 @@ class TrainerConfig(Coqpit):
 
     # Fields for the run
     output_path: str = field(default="output")
-    logger_uri: Optional[str] = field(
+    logger_uri: str | None = field(
         default=None,
         metadata={
             "help": "URI to save training artifacts by the logger. If not set, logs will be saved in the output_path. Defaults to None"
         },
     )
     run_name: str = field(default="run", metadata={"help": "Name of the run. Defaults to 'run'"})
-    project_name: Optional[str] = field(default=None, metadata={"help": "Name of the project. Defaults to None"})
+    project_name: str | None = field(default=None, metadata={"help": "Name of the project. Defaults to None"})
     run_description: str = field(
         default="🐸Coqui trainer run.",
         metadata={"help": "Notes and description about the run. Defaults to '🐸Coqui trainer run.'"},
@@ -119,9 +119,7 @@ class TrainerConfig(Coqpit):
     model_param_stats: bool = field(
         default=False, metadata={"help": "Log model parameters stats on the logger dashboard. Defaults to False"}
     )
-    wandb_entity: Optional[str] = field(
-        default=None, metadata={"help": "Wandb entity to log the run. Defaults to None"}
-    )
+    wandb_entity: str | None = field(default=None, metadata={"help": "Wandb entity to log the run. Defaults to None"})
     dashboard_logger: str = field(
         default="tensorboard", metadata={"help": "Logger to use for the tracking dashboard. Defaults to 'tensorboard'"}
     )
@@ -129,7 +127,7 @@ class TrainerConfig(Coqpit):
     save_on_interrupt: bool = field(
         default=True, metadata={"help": "Save checkpoint on interrupt (Ctrl+C). Defaults to True"}
     )
-    log_model_step: Optional[int] = field(
+    log_model_step: int | None = field(
         default=None,
         metadata={
             "help": "Save checkpoint to the logger every log_model_step steps. If not defined `save_step == log_model_step`."
@@ -144,7 +142,7 @@ class TrainerConfig(Coqpit):
         default=False, metadata={"help": "Save all best checkpoints and keep the older ones. Defaults to False"}
     )
     save_best_after: int = field(default=0, metadata={"help": "Wait N steps to save best checkpoints. Defaults to 0"})
-    target_loss: Optional[str] = field(
+    target_loss: str | None = field(
         default=None, metadata={"help": "Target loss name to select the best model. Defaults to None"}
     )
     # Fields for eval and test run
@@ -153,7 +151,7 @@ class TrainerConfig(Coqpit):
     run_eval: bool = field(
         default=True, metadata={"help": "Run evalulation epoch after training epoch. Defaults to True"}
     )
-    run_eval_steps: Optional[int] = field(
+    run_eval_steps: int | None = field(
         default=None,
         metadata={
             "help": "Run evalulation epoch after N steps. If None, waits until training epoch is completed. Defaults to None"
@@ -186,16 +184,14 @@ class TrainerConfig(Coqpit):
         metadata={"help": "Step the scheduler after each epoch else step after each iteration. Defaults to True"},
     )
     # Fields for optimzation
-    lr: Union[float, list[float]] = field(
+    lr: float | list[float] = field(
         default=0.001, metadata={"help": "Learning rate for each optimizer. Defaults to 0.001"}
     )
-    optimizer: Optional[Union[str, list[str]]] = field(
-        default=None, metadata={"help": "Optimizer(s) to use. Defaults to None"}
-    )
-    optimizer_params: Union[dict[str, Any], list[dict[str, Any]]] = field(
+    optimizer: str | list[str] | None = field(default=None, metadata={"help": "Optimizer(s) to use. Defaults to None"})
+    optimizer_params: dict[str, Any] | list[dict[str, Any]] = field(
         default_factory=dict, metadata={"help": "Optimizer(s) arguments. Defaults to {}"}
     )
-    lr_scheduler: Optional[Union[str, list[str]]] = field(
+    lr_scheduler: str | list[str] | None = field(
         default=None, metadata={"help": "Learning rate scheduler(s) to use. Defaults to None"}
     )
     lr_scheduler_params: dict[str, Any] = field(
