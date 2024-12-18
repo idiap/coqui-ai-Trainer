@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import nn
@@ -20,7 +20,7 @@ class TrainerModel(ABC, nn.Module):
     """Abstract 🐸TTS class. Every new 🐸TTS model must inherit this."""
 
     @abstractmethod
-    def forward(self, input: torch.Tensor, *args, aux_input: Optional[dict[str, Any]] = None, **kwargs) -> dict:
+    def forward(self, input: torch.Tensor, *args, aux_input: dict[str, Any] | None = None, **kwargs) -> dict:
         """Forward ... for the model mainly used in training.
 
         You can be flexible here and use different number of arguments and argument names since it is intended to be

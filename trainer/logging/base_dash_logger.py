@@ -40,7 +40,7 @@ class BaseDashboardLogger(ABC):
         pass
 
     @abstractmethod
-    def add_artifact(self, file_or_dir: Union[str, os.PathLike[Any]], name: str, artifact_type: str, aliases=None):
+    def add_artifact(self, file_or_dir: str | os.PathLike[Any], name: str, artifact_type: str, aliases=None):
         pass
 
     @abstractmethod

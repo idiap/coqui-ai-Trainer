@@ -26,10 +26,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "coqui-tts-trainer"
-version = "0.2.0"
+version = "0.2.1"
 description = "General purpose model trainer for PyTorch that is more flexible than it should be, by 🐸Coqui."
 readme = "README.md"
-requires-python = ">=3.9, <3.13"
+requires-python = ">=3.10, <3.13"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Eren Gölge", email = "egolge@coqui.ai"}
@@ -47,7 +47,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -58,7 +57,7 @@ classifiers = [
 dependencies = [
     "coqpit-config>=0.1.1",
     "fsspec>=2023.6.0",
-    "numpy>=1.24.3; python_version < '3.12'",
+    "numpy>=1.25.2; python_version < '3.12'",
     "numpy>=1.26.0; python_version >= '3.12'",
     "packaging>=21.0",
     "psutil>=5",
@@ -73,7 +72,7 @@ dev = [
     "coverage>=7",
     "pre-commit>=3",
     "pytest>=8",
-    "ruff==0.6.9",
+    "ruff==0.8.3",
 ]
 test = [
     "accelerate>=0.20.0",
@@ -112,7 +111,6 @@ packages = ["trainer"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
 lint.extend-select = [
     "ANN204", # type hints
     "B",      # bugbear

@@ -13,13 +13,13 @@ __all__ = ["ConsoleLogger", "DummyLogger"]
 logger = logging.getLogger("trainer")
 
 
-def get_mlflow_tracking_url() -> Union[str, None]:
+def get_mlflow_tracking_url() -> str | None:
     if "MLFLOW_TRACKING_URI" in os.environ:
         return os.environ["MLFLOW_TRACKING_URI"]
     return None
 
 
-def get_ai_repo_url() -> Union[str, None]:
+def get_ai_repo_url() -> str | None:
     if "AIM_TRACKING_URI" in os.environ:
         return os.environ["AIM_TRACKING_URI"]
     return None
