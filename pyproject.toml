@@ -160,7 +160,6 @@ module = [
     "accelerate",
     "aim",
     "aim.sdk.run",
-    "apex",
     "clearml",
     "fsspec",
     "plotly",

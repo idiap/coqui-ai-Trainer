@@ -15,10 +15,6 @@ from trainer.torch import NoamLR, StepwiseGradualLR
 from trainer.utils.distributed import rank_zero_logger_info
 
 
-def is_apex_available() -> bool:
-    return importlib.util.find_spec("apex") is not None
-
-
 def is_mlflow_available() -> bool:
     return importlib.util.find_spec("mlflow") is not None
 

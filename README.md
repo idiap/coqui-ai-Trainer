@@ -65,7 +65,7 @@ def optimize(self, batch, trainer):
     loss_disc = (loss_real + loss_fake) / 2
 
     # step dicriminator
-    self.scaled_backward(loss_disc, None, trainer, trainer.optimizer[0])
+    self.scaled_backward(loss_disc, None, trainer)
 
     if trainer.total_steps_done % trainer.grad_accum_steps == 0:
         trainer.optimizer[0].step()
@@ -81,7 +81,7 @@ def optimize(self, batch, trainer):
     loss_gen = trainer.criterion(logits, valid)
 
     # step generator
-    self.scaled_backward(loss_gen, None, trainer, trainer.optimizer[1])
+    self.scaled_backward(loss_gen, None, trainer)
     if trainer.total_steps_done % trainer.grad_accum_steps == 0:
         trainer.optimizer[1].step()
         trainer.optimizer[1].zero_grad()

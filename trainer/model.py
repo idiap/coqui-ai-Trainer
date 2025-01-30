@@ -4,11 +4,6 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import nn
 
-from trainer.trainer_utils import is_apex_available
-
-if is_apex_available():
-    from apex import amp
-
 if TYPE_CHECKING:
     from trainer.trainer import Trainer
 
@@ -160,7 +155,6 @@ class TrainerModel(ABC, nn.Module):
         self,
         loss: torch.Tensor,
         trainer: "Trainer",
-        optimizer: torch.optim.Optimizer,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -169,14 +163,9 @@ class TrainerModel(ABC, nn.Module):
         Args:
             loss (torch.Tensor): Loss to be backpropagated.
             trainer (Trainer): Trainer instance to be able to access the training closure.
-            optimizer (Optimizer): Optimizer for APEX AMP based scaled `backward` calls.
         """
         if trainer.use_amp_scaler:
-            if trainer.use_apex:
-                # https://nvidia.github.io/apex/advanced.html?highlight=accumulate#backward-passes-with-multiple-optimizers
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            elif trainer.scaler is not None:
+            if trainer.scaler is not None:
                 # model optimizer step in mixed precision mode
                 trainer.scaler.scale(loss).backward()
         else:

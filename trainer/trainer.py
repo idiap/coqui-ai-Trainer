@@ -1,6 +1,5 @@
 import functools
 import gc
-import importlib.util
 import logging
 import os
 import platform
@@ -48,7 +47,6 @@ from trainer.model import TrainerModel
 from trainer.trainer_utils import (
     get_optimizer,
     get_scheduler,
-    is_apex_available,
     print_training_env,
     setup_torch_training_env,
 )
@@ -61,9 +59,6 @@ from trainer.utils.distributed import (
 )
 
 logger = logging.getLogger("trainer")
-
-if is_apex_available():
-    from apex import amp  # pylint: disable=import-error
 
 if is_pytorch_at_least_2_3():
     GradScaler = functools.partial(torch.GradScaler, device="cuda")
@@ -98,8 +93,7 @@ class Trainer:
         It can train all the available `tts` and `vocoder` models or easily be customized.
 
         Notes:
-            Supports Automatic Mixed Precision training. If `Apex` is availabe, it automatically picks that, else
-            it uses PyTorch's native `amp` module. `Apex` may provide more stable training in some cases.
+            Supports Automatic Mixed Precision training using PyTorch's native `amp` module.
 
         Args:
             args (TrainerArgs): Training arguments parsed either from console by `argparse` or `TrainerArgs`
@@ -343,9 +337,6 @@ class Trainer:
 
         # init AMP
         if self.use_amp_scaler:
-            if self.use_apex:
-                self.scaler = None
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O1")
             self.scaler = GradScaler()
         else:
             self.scaler = None
@@ -376,11 +367,6 @@ class Trainer:
         self.callbacks.on_init_end(self)
         self.dashboard_logger.add_config(config)
         self.save_training_script()
-
-    @property
-    def use_apex(self) -> bool:
-        """Return True if using APEX."""
-        return not self.args.use_accelerate and self._is_apex_available()
 
     @property
     def use_pt_ddp(self) -> bool:
@@ -1084,26 +1070,18 @@ class Trainer:
                     optimizer.zero_grad(set_to_none=True)
         else:
             if self.use_amp_scaler and scaler is not None:
-                if self.use_apex:
-                    # TODO: verify AMP use for GAN training in TTS
-                    # https://nvidia.github.io/apex/advanced.html?highlight=accumulate#backward-passes-with-multiple-optimizers
-                    with amp.scale_loss(loss_dict["loss"], optimizer) as scaled_loss:
-                        scaled_loss.backward()
-                    if step_optimizer:
-                        grad_norm = self._grad_clipping(grad_clip=grad_clip, optimizer=optimizer, scaler=None)
-                else:
-                    # model optimizer step in mixed precision mode
-                    scaler.scale(loss_dict["loss"]).backward()
-                    # gradient accumulation
-                    if step_optimizer:
-                        grad_norm = self._grad_clipping(grad_clip=grad_clip, optimizer=optimizer, scaler=scaler)
-                        scale_prev = scaler.get_scale()
-                        scaler.step(optimizer)
-                        # update the scaler at the end of all the optimizer steps
-                        if optimizer_idx is None or (optimizer_idx + 1 == num_optimizers):
-                            scaler.update()
-                            loss_dict["amp_scaler"] = scaler.get_scale()  # for logging
-                        update_lr_scheduler = scale_prev <= scaler.get_scale()
+                # model optimizer step in mixed precision mode
+                scaler.scale(loss_dict["loss"]).backward()
+                # gradient accumulation
+                if step_optimizer:
+                    grad_norm = self._grad_clipping(grad_clip=grad_clip, optimizer=optimizer, scaler=scaler)
+                    scale_prev = scaler.get_scale()
+                    scaler.step(optimizer)
+                    # update the scaler at the end of all the optimizer steps
+                    if optimizer_idx is None or (optimizer_idx + 1 == num_optimizers):
+                        scaler.update()
+                        loss_dict["amp_scaler"] = scaler.get_scale()  # for logging
+                    update_lr_scheduler = scale_prev <= scaler.get_scale()
             else:
                 # main model optimizer step
                 loss_dict["loss"].backward()
@@ -2026,8 +2004,3 @@ class Trainer:
         # only log to a file if rank > 0 in DDP
         if self.args.rank > 0:
             logger_new.handlers = [h for h in logger_new.handlers if not isinstance(h, logging.StreamHandler)]
-
-    @staticmethod
-    def _is_apex_available() -> bool:
-        """Check if Nvidia's APEX is available."""
-        return importlib.util.find_spec("apex") is not None
