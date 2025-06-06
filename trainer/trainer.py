@@ -1540,7 +1540,7 @@ class Trainer:
 
         self.total_steps_done = self.restore_step
 
-        for epoch in range(self.config.epochs):
+        for epoch in range(self.restore_epoch, self.config.epochs):
             if self.num_gpus > 1:
                 # let all processes sync up before starting with a new epoch of training
                 dist.barrier()
