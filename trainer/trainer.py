@@ -321,6 +321,9 @@ class Trainer:
         # setup optimizer and scheduler
         self.optimizer = self.get_optimizer(self.model, self.config)
         self.scheduler = self.get_scheduler(self.model, self.config, self.optimizer)
+        # With multiple optimizers, some are not used all the time. We keep
+        # track of that to know whether to step the corresponding schedulers.
+        self._stepped_optimizers: set[int | None] = set()
 
         # CALLBACK
         self.callbacks = TrainerCallback()
@@ -997,6 +1000,7 @@ class Trainer:
                     if self.accelerator.sync_gradients and grad_clip is not None and grad_clip > 0:
                         self.accelerator.clip_grad_norm_(self.model.parameters(), grad_clip)
                     optimizer.step()
+                    self._stepped_optimizers.add(optimizer_idx)
                     if (
                         scheduler is not None
                         and not self.config.scheduler_after_epoch
@@ -1027,6 +1031,7 @@ class Trainer:
                     if grad_clip > 0:
                         grad_norm = torch.nn.utils.clip_grad_norm_(self.master_params(optimizer), grad_clip)
                     optimizer.step()
+                    self._stepped_optimizers.add(optimizer_idx)
 
             # setup lr
             if (
@@ -1258,9 +1263,10 @@ class Trainer:
 
         # scheduler step
         if self.scheduler is not None and self.config.scheduler_after_epoch:
-            for _, scheduler in iter_value_list_dict(self.scheduler):
-                if scheduler is not None:
+            for idx, scheduler in iter_value_list_dict(self.scheduler):
+                if scheduler is not None and idx in self._stepped_optimizers:
                     scheduler.step()
+        self._stepped_optimizers.clear()
         # plot self.epochs_done Stats
         if self.args.rank == 0:
             epoch_stats = {"epoch_time": epoch_time}
