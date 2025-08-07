@@ -98,7 +98,7 @@ def setup_torch_training_env(
         num_gpus = torch.cuda.device_count()
 
     if num_gpus > 1 and (not use_ddp and not args.use_accelerate):
-        msg = f" [!] {num_gpus} active GPUs. Define the target GPU by `CUDA_VISIBLE_DEVICES`. For multi-gpu training use `trainer/distribute.py`."
+        msg = f" [!] {num_gpus} active GPUs. Define the target GPU by `CUDA_VISIBLE_DEVICES`. For multi-gpu training use `python -m trainer.distribute`."
         raise RuntimeError(msg)
 
     random.seed(training_seed)
