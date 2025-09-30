@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify tag matches version
         run: |
           set -ex
@@ -22,7 +22,7 @@ jobs:
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
       - name: Build sdist and wheel
         run: uv build
       - name: Test installation of sdist and wheel
@@ -30,7 +30,7 @@ jobs:
           uv venv --no-project
           uv pip install dist/*.tar.gz
           uv pip install dist/*.whl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: build
           path: dist/*
@@ -43,7 +43,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: "dist/"
           name: build
