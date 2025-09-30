@@ -396,7 +396,7 @@ class Trainer:
         """Setup HF Accelerate for the training."""
         # check if accelerate is installed
         try:
-            from accelerate import Accelerator  # pylint:disable=import-outside-toplevel
+            from accelerate import Accelerator  # noqa: PLC0415
         except ImportError as e:
             msg = "Please install accelerate to use this feature."
             raise ImportError(msg) from e
@@ -519,7 +519,7 @@ class Trainer:
     def setup_training_environment(args: TrainerArgs, config: TrainerConfig, gpu: int | None) -> tuple[bool, int]:
         if platform.system() != "Windows":
             # https://github.com/pytorch/pytorch/issues/973
-            import resource  # pylint: disable=import-outside-toplevel
+            import resource  # pylint:disable=import-outside-toplevel  # noqa: PLC0415
 
             rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
             resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))

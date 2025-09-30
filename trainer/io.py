@@ -32,7 +32,7 @@ def get_user_data_dir(appname: str) -> Path:
     elif XDG_DATA_HOME is not None:
         ans = Path(XDG_DATA_HOME).expanduser().resolve(strict=False)
     elif sys.platform == "win32":
-        import winreg  # pylint: disable=import-outside-toplevel
+        import winreg  # noqa: PLC0415
 
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
