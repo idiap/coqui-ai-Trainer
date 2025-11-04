@@ -1017,6 +1017,7 @@ class Trainer:
                     grad_norm = self._grad_clipping(grad_clip=grad_clip, optimizer=optimizer, scaler=scaler)
                     scale_prev = scaler.get_scale()
                     scaler.step(optimizer)
+                    self._stepped_optimizers.add(optimizer_idx)
                     # update the scaler at the end of all the optimizer steps
                     if optimizer_idx is None or (optimizer_idx + 1 == num_optimizers):
                         scaler.update()
