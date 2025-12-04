@@ -12,16 +12,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         uv-resolution: ["lowest-direct", "highest"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Unit tests
         run: uv run --resolution=${{ matrix.uv-resolution }} --all-extras coverage run --parallel
       - name: Upload coverage data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           include-hidden-files: true
           name: coverage-data-${{ matrix.python-version }}-${{ matrix.uv-resolution }}
@@ -32,12 +32,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: "0.4.27"
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - name: Setup uv
+        uses: ./.github/actions/setup-uv
+      - uses: actions/download-artifact@v6
         with:
           pattern: coverage-data-*
           merge-multiple: true

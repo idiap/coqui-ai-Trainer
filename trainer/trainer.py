@@ -396,7 +396,7 @@ class Trainer:
         """Setup HF Accelerate for the training."""
         # check if accelerate is installed
         try:
-            from accelerate import Accelerator  # pylint:disable=import-outside-toplevel
+            from accelerate import Accelerator  # noqa: PLC0415
         except ImportError as e:
             msg = "Please install accelerate to use this feature."
             raise ImportError(msg) from e
@@ -519,7 +519,7 @@ class Trainer:
     def setup_training_environment(args: TrainerArgs, config: TrainerConfig, gpu: int | None) -> tuple[bool, int]:
         if platform.system() != "Windows":
             # https://github.com/pytorch/pytorch/issues/973
-            import resource  # pylint: disable=import-outside-toplevel
+            import resource  # pylint:disable=import-outside-toplevel  # noqa: PLC0415
 
             rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
             resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -1017,6 +1017,7 @@ class Trainer:
                     grad_norm = self._grad_clipping(grad_clip=grad_clip, optimizer=optimizer, scaler=scaler)
                     scale_prev = scaler.get_scale()
                     scaler.step(optimizer)
+                    self._stepped_optimizers.add(optimizer_idx)
                     # update the scaler at the end of all the optimizer steps
                     if optimizer_idx is None or (optimizer_idx + 1 == num_optimizers):
                         scaler.update()

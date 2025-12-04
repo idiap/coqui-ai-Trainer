@@ -32,7 +32,7 @@ def logger_factory(config: TrainerConfig, output_path: str | os.PathLike[Any]) -
     dashboard_logger: BaseDashboardLogger
 
     if config.dashboard_logger == "tensorboard":
-        from trainer.logging.tensorboard_logger import TensorboardLogger
+        from trainer.logging.tensorboard_logger import TensorboardLogger  # noqa: PLC0415
 
         model_name = f"{project_name}@{run_name}" if project_name else run_name
         dashboard_logger = TensorboardLogger(log_uri, model_name=model_name)
@@ -40,7 +40,7 @@ def logger_factory(config: TrainerConfig, output_path: str | os.PathLike[Any]) -
         logger.info(" > Start Tensorboard: tensorboard --logdir=%s", log_uri)
 
     elif config.dashboard_logger == "wandb":
-        from trainer.logging.wandb_logger import WandbLogger
+        from trainer.logging.wandb_logger import WandbLogger  # noqa: PLC0415
 
         dashboard_logger = WandbLogger(  # pylint: disable=abstract-class-instantiated
             project=project_name,
@@ -50,17 +50,17 @@ def logger_factory(config: TrainerConfig, output_path: str | os.PathLike[Any]) -
         )
 
     elif config.dashboard_logger == "mlflow":
-        from trainer.logging.mlflow_logger import MLFlowLogger
+        from trainer.logging.mlflow_logger import MLFlowLogger  # noqa: PLC0415
 
         dashboard_logger = MLFlowLogger(log_uri=log_uri, model_name=project_name)  # type: ignore[arg-type]
 
     elif config.dashboard_logger == "aim":
-        from trainer.logging.aim_logger import AimLogger
+        from trainer.logging.aim_logger import AimLogger  # noqa: PLC0415
 
         dashboard_logger = AimLogger(repo=log_uri, model_name=project_name)  # type: ignore[arg-type]
 
     elif config.dashboard_logger == "clearml":
-        from trainer.logging.clearml_logger import ClearMLLogger
+        from trainer.logging.clearml_logger import ClearMLLogger  # noqa: PLC0415
 
         dashboard_logger = ClearMLLogger(
             output_uri=log_uri,
