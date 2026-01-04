@@ -233,7 +233,7 @@ class Trainer:
         )
 
         # make sure that start_with_eval is disabled if eval is disabled
-        if not self.config.run_eval and self.start_with_eval:
+        if not self.config.run_eval:
             self.start_with_eval = False
 
         self.total_steps_done = 0
@@ -1255,7 +1255,11 @@ class Trainer:
             loader_start_time = time.time()
 
             # RUN EVAL -> run evaluation epoch in the middle of training. Useful for big datasets.
-            if self.config.run_eval_steps is not None and (self.total_steps_done % self.config.run_eval_steps == 0):
+            if (
+                self.config.run_eval
+                and self.config.run_eval_steps is not None
+                and (self.total_steps_done % self.config.run_eval_steps == 0)
+            ):
                 self.eval_epoch()
                 self.model.train()
 
@@ -1338,15 +1342,7 @@ class Trainer:
         self.keep_avg_eval = KeepAverage() if self.keep_avg_eval is None else self.keep_avg_eval
 
         if self.eval_loader is None:
-            self.eval_loader = (
-                self.get_eval_dataloader(
-                    self.training_assets,
-                    self.eval_samples,
-                    verbose=True,
-                )
-                if self.config.run_eval
-                else None
-            )
+            self.eval_loader = self.get_eval_dataloader(self.training_assets, self.eval_samples, verbose=True)
 
         self.model.eval()
         self.c_logger.print_eval_start()
@@ -1389,7 +1385,7 @@ class Trainer:
         If ```model.test_run()``` is defined, it will be called and it is expected to set and execute everything
         in the model.
 
-        Else if  ```mode.test()``` is defined, it will be called and it takes an test data loader as an argument
+        Else if  ```model.test()``` is defined, it will be called and it takes an test data loader as an argument
         and iterate over it.
         """
         self.model.eval()

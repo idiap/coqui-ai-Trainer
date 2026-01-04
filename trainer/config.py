@@ -149,12 +149,15 @@ class TrainerConfig(Coqpit):
     print_eval: bool = field(default=False, metadata={"help": "Print eval steps on the terminal. Defaults to False"})
     test_delay_epochs: int = field(default=0, metadata={"help": "Wait N epochs before running the test. Defaults to 0"})
     run_eval: bool = field(
-        default=True, metadata={"help": "Run evalulation epoch after training epoch. Defaults to True"}
+        default=True,
+        metadata={
+            "help": "Run evaluation epoch (after training epoch and/or after <run_eval_steps>). Defaults to True"
+        },
     )
     run_eval_steps: int | None = field(
         default=None,
         metadata={
-            "help": "Run evalulation epoch after N steps. If None, waits until training epoch is completed. Defaults to None"
+            "help": "Run evaluation epoch after N steps. If None, waits until training epoch is completed. Defaults to None"
         },
     )
     # Fields for distributed training
