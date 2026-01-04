@@ -1282,30 +1282,6 @@ class Trainer:
     # EVAL FUNCTIONS
     #######################
 
-    def _model_eval_step(
-        self,
-        batch: dict[str, Any],
-        model: TrainerModel,
-        criterion: nn.Module | list[nn.Module],
-        optimizer_idx: int | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Perform a evaluation forward pass. Compute model outputs and losses with no gradients.
-
-        Args:
-            batch (Dict): IBatch of inputs.
-            model (TrainerModel): Model to call evaluation.
-            criterion (nn.Module): Model criterion.
-            optimizer_idx (int, optional): Optimizer ID to define the closure in multi-optimizer training. Defaults to None.
-
-        Returns:
-            Tuple[Dict, Dict]: model outputs and losses.
-        """
-        input_args: list[Any] = [batch, criterion]
-        if optimizer_idx is not None:
-            input_args.append(optimizer_idx)
-
-        return self._get_model().eval_step(*input_args)
-
     def eval_step(
         self, batch: dict[str, Any] | list[Any], step: int
     ) -> tuple[dict[str, Any] | list[dict[str, Any]] | None, dict[str, Any] | None]:
@@ -1452,35 +1428,6 @@ class Trainer:
                     else:
                         self.best_loss = {"train_loss": ch["model_loss"], "eval_loss": None}
             logger.info(" > Starting with loaded last best loss %s", self.best_loss)
-
-    def test(self, model: TrainerModel | None = None, test_samples: list[str] | None = None) -> None:
-        """Run evaluation steps on the test data split.
-
-        You can either provide the model and the test samples
-        explicitly or the trainer uses values from the initialization.
-
-        Args:
-            model (TrainerModel, optional): Model to use for testing. If None, use the model given in the initialization.
-                Defaults to None.
-
-            test_samples (List[str], optional): List of test samples to use for testing. If None, use the test samples
-                given in the initialization. Defaults to None.
-        """
-        logger.info(" > USING TEST SET...")
-        self.keep_avg_eval = KeepAverage()
-
-        if model is not None:
-            self.model = model
-
-        eval_samples_cache = self.eval_samples
-        if test_samples is not None:
-            self.eval_samples = test_samples
-        else:
-            self.eval_samples = self.test_samples
-
-        self.eval_epoch()
-        self.c_logger.print_epoch_end(self.epochs_done, self.keep_avg_eval.avg_values)
-        self.eval_samples = eval_samples_cache
 
     ###################################
     # FIT FUNCTIONS
