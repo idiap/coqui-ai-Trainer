@@ -73,6 +73,12 @@ dependencies = [
     "torch>=2.9; python_version >= '3.14'",
 ]
 
+[project.optional-dependencies]
+aim = ["aim>=3.21; python_version < '3.13'"]
+clearml = ["clearml>=2"]
+mlflow = ["mlflow>=3.6"]
+wandb = ["wandb>=0.19"]
+
 [dependency-groups]
 dev = [
     "coverage>=7",
@@ -82,14 +88,12 @@ dev = [
 ]
 test = [
     "accelerate>=1.0.0",
+    "matplotlib>=3.10.5",
     "torchvision>=0.21.0",
 ]
 mypy = [
-    "matplotlib>=3.9.2",
-    "mlflow>=3.0.0",
-    "mypy==1.18.2",
+    "mypy==1.19.1",
     "types-psutil>=7.0.0.20250218",
-    "wandb>=0.18.7",
 ]
 
 [tool.uv]
@@ -155,6 +159,7 @@ convention = "google"
 
 [tool.coverage.report]
 show_missing = true
+skip_covered = true
 skip_empty = true
 
 [tool.coverage.run]

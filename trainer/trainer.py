@@ -1349,7 +1349,7 @@ class Trainer:
         loader_start_time = time.time()
         batch = None
         outputs = None
-        for cur_step, batch in enumerate(self.eval_loader):  # type: ignore[arg-type]
+        for cur_step, batch in enumerate(self.eval_loader):
             # format data
             batch = self.format_batch(batch)
             loader_time = time.time() - loader_start_time
