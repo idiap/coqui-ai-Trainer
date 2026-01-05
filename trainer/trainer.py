@@ -7,11 +7,11 @@ import shutil
 import sys
 import time
 import traceback
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import nullcontext, suppress
 from inspect import signature
 from pathlib import Path
-from typing import Any, Optional, cast, overload
+from typing import Any, Optional, cast
 
 import torch
 import torch.distributed as dist
@@ -77,8 +77,6 @@ class Trainer:
         c_logger: ConsoleLogger | None = None,
         dashboard_logger: BaseDashboardLogger | None = None,
         model: TrainerModel | None = None,
-        get_model: Callable[..., TrainerModel] | None = None,
-        get_data_samples: Callable[..., list[Any]] | None = None,
         train_samples: list[Any] | None = None,
         eval_samples: list[Any] | None = None,
         test_samples: list[Any] | None = None,
@@ -114,15 +112,6 @@ class Trainer:
 
             model (TrainerModel, optional): Initialized and ready-to-train model. If it is not defined, `Trainer`
                 initializes a model from the provided config. Defaults to None.
-
-            get_model (Callable):
-                A function that returns a model. It is used to initialize the model when `model` is not provided.
-                It either takes the config as the only argument or does not take any argument.
-                Defaults to None
-
-            get_data_samples (Callable):
-                A function that returns a list of training and evaluation samples. Used if `train_samples` and
-                `eval_samples` are None. Defaults to None.
 
             train_samples (List):
                 A list of training samples used by the model's `get_train_data_loader` to init the `dataset` and the
@@ -255,26 +244,14 @@ class Trainer:
             else self.config.use_grad_scaler
         )
 
-        self.train_samples: list[Any] | None
-        self.eval_samples: list[Any] | None
-        self.test_samples: list[Any] | None
+        self.train_samples: list[Any] | None = None
+        self.eval_samples: list[Any] | None = None
+        self.test_samples: list[Any] | None = None
         if train_samples is not None:
-            # use the provided samples
+            # use provided samples, else expecting to load samples in `model.get_data_loader()`
             self.train_samples = train_samples
             self.eval_samples = eval_samples
             self.test_samples = test_samples
-        elif get_data_samples is not None:
-            # run `get_data_samples` to init the data samples
-            (
-                self.train_samples,
-                self.eval_samples,
-                self.test_samples,
-            ) = self.run_get_data_samples(config, get_data_samples)
-        else:
-            # expecting to load the samples in `model.get_data_loader()`
-            self.train_samples = None
-            self.eval_samples = None
-            self.test_samples = None
 
         # define custom train and eval loader
         self.train_loader = train_loader
@@ -284,13 +261,10 @@ class Trainer:
         self.setup_small_run(args.small_run)
 
         # init the model
-        if model is not None:
-            self.model = model
-        elif get_model is not None:
-            self.run_get_model(self.config, get_model)
-        else:
-            msg = "`model` and `get_model` cannot both be None."
+        if model is None:
+            msg = "`model` cannot be None."
             raise ValueError(msg)
+        self.model = model
 
         # init model's training assets
         self.model.init_for_training()
@@ -538,38 +512,6 @@ class Trainer:
 
         print_training_env(args, config)
         return use_cuda, num_gpus
-
-    @staticmethod
-    @overload
-    def run_get_model(config: TrainerConfig, get_model: Callable[[TrainerConfig], TrainerModel]) -> TrainerModel: ...
-
-    @staticmethod
-    @overload
-    def run_get_model(config: TrainerConfig, get_model: Callable[[], TrainerModel]) -> TrainerModel: ...
-
-    @staticmethod
-    def run_get_model(config: TrainerConfig, get_model: Callable[..., TrainerModel]) -> TrainerModel:
-        """Run the `get_model` function and return the model.
-
-        Args:
-            config (TrainerConfig): Model config.
-
-        Returns:
-            TrainerModel: initialized model.
-        """
-        return get_model(config) if len(signature(get_model).parameters) == 1 else get_model()
-
-    @staticmethod
-    def run_get_data_samples(
-        config: TrainerConfig, get_data_samples: Callable[..., list[Any]]
-    ) -> tuple[list[Any] | None, list[Any] | None, list[Any] | None]:
-        if callable(get_data_samples):
-            if len(signature(get_data_samples).parameters) == 1:
-                train_samples, eval_samples, test_samples = get_data_samples(config)
-            else:
-                train_samples, eval_samples, test_samples = get_data_samples()
-            return train_samples, eval_samples, test_samples
-        return None, None, None
 
     def restore_model(self) -> None:
         """Restore training from an old run.
