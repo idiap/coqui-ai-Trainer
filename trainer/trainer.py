@@ -118,7 +118,7 @@ class Trainer:
                 `data_loader`. Defaults to None.
 
             eval_samples (List):
-                A list of evaluation samples used by the model's `get_eval_data_loader` to init the `dataset` and the
+                A list of evaluation samples used by `get_eval_dataloader` to init the `dataset` and the
                 `data_loader`. Defaults to None.
 
             train_loader (DataLoader):
@@ -128,7 +128,7 @@ class Trainer:
                 A pytorch data loader object for evaluation epochs. Leave as None to be generated during training. Defaults to None.
 
             test_samples (List):
-                A list of test samples used by the model's `get_test_data_loader` to init the `dataset` and the
+                A list of test samples used by the `get_eval_dataloader` to init the `dataset` and the
                 `data_loader`. If None, the ```model.test_run()``` is expected to load the data. Defaults to None.
 
             training_assets (Dict):
@@ -651,8 +651,7 @@ class Trainer:
     ) -> DataLoader[Any]:
         """Initialize and return a evaluation data loader.
 
-        Call ```model.get_eval_data_loader``` if it is implemented, else call ```model.get_data_loader```
-        and set ```is_eval=True```.
+        Call ```model.get_data_loader``` and set ```is_eval=True```.
 
         Args:
             ap (AudioProcessor): Audio processor.
@@ -662,63 +661,15 @@ class Trainer:
         Returns:
             DataLoader: Initialized training data loader.
         """
-        model = self._get_model()
-        try:
-            return model.get_eval_data_loader(
-                self.config,
-                self.training_assets,
-                samples,
-                verbose,
-                self.num_gpus,
-                self.args.rank,
-            )
-        except NotImplementedError:
-            return self._get_loader(
-                model,
-                self.config,
-                training_assets,
-                samples,
-                is_eval=True,
-                verbose=verbose,
-                num_gpus=self.num_gpus,
-            )
-
-    def get_test_dataloader(
-        self, training_assets: dict[str, Any], samples: list[Any] | None, *, verbose: bool
-    ) -> DataLoader[Any]:
-        """Initialize and return a evaluation data loader.
-
-        Call ```model.get_test_data_loader``` if it is implemented, else call ```model.get_data_loader```
-        and set ```is_eval=True```.
-
-        Args:
-            ap (AudioProcessor): Audio processor.
-            samples (List): Data samples used for training.
-            verbose (bool): enable/disable printing loader stats at initialization.
-
-        Returns:
-            DataLoader: Initialized training data loader.
-        """
-        model = self._get_model()
-        try:
-            return model.get_test_data_loader(
-                self.config,
-                self.training_assets,
-                samples,
-                verbose,
-                self.num_gpus,
-                self.args.rank,
-            )
-        except NotImplementedError:
-            return self._get_loader(
-                model,
-                self.config,
-                training_assets,
-                samples,
-                is_eval=True,
-                verbose=verbose,
-                num_gpus=self.num_gpus,
-            )
+        return self._get_loader(
+            self._get_model(),
+            self.config,
+            training_assets,
+            samples,
+            is_eval=True,
+            verbose=verbose,
+            num_gpus=self.num_gpus,
+        )
 
     def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
         """Format the dataloader output and return a batch.
@@ -1325,7 +1276,7 @@ class Trainer:
         try:
             test_outputs = model.test_run(self.training_assets)
         except NotImplementedError:
-            self.test_loader = self.get_test_dataloader(
+            self.test_loader = self.get_eval_dataloader(
                 self.training_assets,
                 self.test_samples if self.test_samples else self.eval_samples,
                 verbose=True,

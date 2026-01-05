@@ -130,12 +130,6 @@ class TrainerModel(ABC, nn.Module):
     def get_train_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
         raise NotImplementedError
 
-    def get_eval_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
-        raise NotImplementedError
-
-    def get_test_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
-        raise NotImplementedError
-
     def test_run(self, *args: Any, **kwargs: Any):
         raise NotImplementedError
 
