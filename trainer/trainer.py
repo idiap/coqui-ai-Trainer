@@ -734,11 +734,7 @@ class Trainer:
             Dict: Formatted batch.
         """
         with suppress(NotImplementedError):
-            batch = (
-                self.wrapped_model.format_batch(batch)
-                if self.wrapped_model is not None
-                else self.model.format_batch(batch)
-            )
+            batch = self._get_model().format_batch(batch)
 
         if isinstance(batch, dict):
             for k, v in batch.items():
@@ -747,11 +743,7 @@ class Trainer:
             batch = [to_cuda(v) for v in batch]
 
         with suppress(NotImplementedError):
-            batch = (
-                self.wrapped_model.format_batch_on_device(batch)
-                if self.wrapped_model is not None
-                else self.model.format_batch_on_device(batch)
-            )
+            batch = self._get_model().format_batch_on_device(batch)
         return batch
 
     ######################
@@ -789,10 +781,7 @@ class Trainer:
         input_args: list[Any] = [batch, criterion]
         if optimizer_idx is not None:
             input_args.append(optimizer_idx)
-        # unwrap model in DDP training
-        if self.wrapped_model is not None:
-            return self.wrapped_model.train_step(*input_args)
-        return self.model.train_step(*input_args)
+        return self._get_model().train_step(*input_args)
 
     def _get_autocast_args(self, *, mixed_precision: bool, precision: str) -> tuple[str, torch.dtype]:
         device = "cpu"
