@@ -7,11 +7,11 @@ import shutil
 import sys
 import time
 import traceback
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import nullcontext, suppress
 from inspect import signature
 from pathlib import Path
-from typing import Any, Optional, cast, overload
+from typing import Any, Optional, cast
 
 import torch
 import torch.distributed as dist
@@ -77,8 +77,6 @@ class Trainer:
         c_logger: ConsoleLogger | None = None,
         dashboard_logger: BaseDashboardLogger | None = None,
         model: TrainerModel | None = None,
-        get_model: Callable[..., TrainerModel] | None = None,
-        get_data_samples: Callable[..., list[Any]] | None = None,
         train_samples: list[Any] | None = None,
         eval_samples: list[Any] | None = None,
         test_samples: list[Any] | None = None,
@@ -115,21 +113,12 @@ class Trainer:
             model (TrainerModel, optional): Initialized and ready-to-train model. If it is not defined, `Trainer`
                 initializes a model from the provided config. Defaults to None.
 
-            get_model (Callable):
-                A function that returns a model. It is used to initialize the model when `model` is not provided.
-                It either takes the config as the only argument or does not take any argument.
-                Defaults to None
-
-            get_data_samples (Callable):
-                A function that returns a list of training and evaluation samples. Used if `train_samples` and
-                `eval_samples` are None. Defaults to None.
-
             train_samples (List):
                 A list of training samples used by the model's `get_train_data_loader` to init the `dataset` and the
                 `data_loader`. Defaults to None.
 
             eval_samples (List):
-                A list of evaluation samples used by the model's `get_eval_data_loader` to init the `dataset` and the
+                A list of evaluation samples used by `get_eval_dataloader` to init the `dataset` and the
                 `data_loader`. Defaults to None.
 
             train_loader (DataLoader):
@@ -139,7 +128,7 @@ class Trainer:
                 A pytorch data loader object for evaluation epochs. Leave as None to be generated during training. Defaults to None.
 
             test_samples (List):
-                A list of test samples used by the model's `get_test_data_loader` to init the `dataset` and the
+                A list of test samples used by the `get_eval_dataloader` to init the `dataset` and the
                 `data_loader`. If None, the ```model.test_run()``` is expected to load the data. Defaults to None.
 
             training_assets (Dict):
@@ -233,7 +222,7 @@ class Trainer:
         )
 
         # make sure that start_with_eval is disabled if eval is disabled
-        if not self.config.run_eval and self.start_with_eval:
+        if not self.config.run_eval:
             self.start_with_eval = False
 
         self.total_steps_done = 0
@@ -255,26 +244,14 @@ class Trainer:
             else self.config.use_grad_scaler
         )
 
-        self.train_samples: list[Any] | None
-        self.eval_samples: list[Any] | None
-        self.test_samples: list[Any] | None
+        self.train_samples: list[Any] | None = None
+        self.eval_samples: list[Any] | None = None
+        self.test_samples: list[Any] | None = None
         if train_samples is not None:
-            # use the provided samples
+            # use provided samples, else expecting to load samples in `model.get_data_loader()`
             self.train_samples = train_samples
             self.eval_samples = eval_samples
             self.test_samples = test_samples
-        elif get_data_samples is not None:
-            # run `get_data_samples` to init the data samples
-            (
-                self.train_samples,
-                self.eval_samples,
-                self.test_samples,
-            ) = self.run_get_data_samples(config, get_data_samples)
-        else:
-            # expecting to load the samples in `model.get_data_loader()`
-            self.train_samples = None
-            self.eval_samples = None
-            self.test_samples = None
 
         # define custom train and eval loader
         self.train_loader = train_loader
@@ -284,13 +261,10 @@ class Trainer:
         self.setup_small_run(args.small_run)
 
         # init the model
-        if model is not None:
-            self.model = model
-        elif get_model is not None:
-            self.run_get_model(self.config, get_model)
-        else:
-            msg = "`model` and `get_model` cannot both be None."
+        if model is None:
+            msg = "`model` cannot be None."
             raise ValueError(msg)
+        self.model = model
 
         # init model's training assets
         self.model.init_for_training()
@@ -539,38 +513,6 @@ class Trainer:
         print_training_env(args, config)
         return use_cuda, num_gpus
 
-    @staticmethod
-    @overload
-    def run_get_model(config: TrainerConfig, get_model: Callable[[TrainerConfig], TrainerModel]) -> TrainerModel: ...
-
-    @staticmethod
-    @overload
-    def run_get_model(config: TrainerConfig, get_model: Callable[[], TrainerModel]) -> TrainerModel: ...
-
-    @staticmethod
-    def run_get_model(config: TrainerConfig, get_model: Callable[..., TrainerModel]) -> TrainerModel:
-        """Run the `get_model` function and return the model.
-
-        Args:
-            config (TrainerConfig): Model config.
-
-        Returns:
-            TrainerModel: initialized model.
-        """
-        return get_model(config) if len(signature(get_model).parameters) == 1 else get_model()
-
-    @staticmethod
-    def run_get_data_samples(
-        config: TrainerConfig, get_data_samples: Callable[..., list[Any]]
-    ) -> tuple[list[Any] | None, list[Any] | None, list[Any] | None]:
-        if callable(get_data_samples):
-            if len(signature(get_data_samples).parameters) == 1:
-                train_samples, eval_samples, test_samples = get_data_samples(config)
-            else:
-                train_samples, eval_samples, test_samples = get_data_samples()
-            return train_samples, eval_samples, test_samples
-        return None, None, None
-
     def restore_model(self) -> None:
         """Restore training from an old run.
 
@@ -709,8 +651,7 @@ class Trainer:
     ) -> DataLoader[Any]:
         """Initialize and return a evaluation data loader.
 
-        Call ```model.get_eval_data_loader``` if it is implemented, else call ```model.get_data_loader```
-        and set ```is_eval=True```.
+        Call ```model.get_data_loader``` and set ```is_eval=True```.
 
         Args:
             ap (AudioProcessor): Audio processor.
@@ -720,63 +661,15 @@ class Trainer:
         Returns:
             DataLoader: Initialized training data loader.
         """
-        model = self._get_model()
-        try:
-            return model.get_eval_data_loader(
-                self.config,
-                self.training_assets,
-                samples,
-                verbose,
-                self.num_gpus,
-                self.args.rank,
-            )
-        except NotImplementedError:
-            return self._get_loader(
-                model,
-                self.config,
-                training_assets,
-                samples,
-                is_eval=True,
-                verbose=verbose,
-                num_gpus=self.num_gpus,
-            )
-
-    def get_test_dataloader(
-        self, training_assets: dict[str, Any], samples: list[Any] | None, *, verbose: bool
-    ) -> DataLoader[Any]:
-        """Initialize and return a evaluation data loader.
-
-        Call ```model.get_test_data_loader``` if it is implemented, else call ```model.get_data_loader```
-        and set ```is_eval=True```.
-
-        Args:
-            ap (AudioProcessor): Audio processor.
-            samples (List): Data samples used for training.
-            verbose (bool): enable/disable printing loader stats at initialization.
-
-        Returns:
-            DataLoader: Initialized training data loader.
-        """
-        model = self._get_model()
-        try:
-            return model.get_test_data_loader(
-                self.config,
-                self.training_assets,
-                samples,
-                verbose,
-                self.num_gpus,
-                self.args.rank,
-            )
-        except NotImplementedError:
-            return self._get_loader(
-                model,
-                self.config,
-                training_assets,
-                samples,
-                is_eval=True,
-                verbose=verbose,
-                num_gpus=self.num_gpus,
-            )
+        return self._get_loader(
+            self._get_model(),
+            self.config,
+            training_assets,
+            samples,
+            is_eval=True,
+            verbose=verbose,
+            num_gpus=self.num_gpus,
+        )
 
     def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
         """Format the dataloader output and return a batch.
@@ -792,11 +685,7 @@ class Trainer:
             Dict: Formatted batch.
         """
         with suppress(NotImplementedError):
-            batch = (
-                self.wrapped_model.format_batch(batch)
-                if self.wrapped_model is not None
-                else self.model.format_batch(batch)
-            )
+            batch = self._get_model().format_batch(batch)
 
         if isinstance(batch, dict):
             for k, v in batch.items():
@@ -805,11 +694,7 @@ class Trainer:
             batch = [to_cuda(v) for v in batch]
 
         with suppress(NotImplementedError):
-            batch = (
-                self.wrapped_model.format_batch_on_device(batch)
-                if self.wrapped_model is not None
-                else self.model.format_batch_on_device(batch)
-            )
+            batch = self._get_model().format_batch_on_device(batch)
         return batch
 
     ######################
@@ -847,10 +732,7 @@ class Trainer:
         input_args: list[Any] = [batch, criterion]
         if optimizer_idx is not None:
             input_args.append(optimizer_idx)
-        # unwrap model in DDP training
-        if self.wrapped_model is not None:
-            return self.wrapped_model.train_step(*input_args)
-        return self.model.train_step(*input_args)
+        return self._get_model().train_step(*input_args)
 
     def _get_autocast_args(self, *, mixed_precision: bool, precision: str) -> tuple[str, torch.dtype]:
         device = "cpu"
@@ -1255,7 +1137,11 @@ class Trainer:
             loader_start_time = time.time()
 
             # RUN EVAL -> run evaluation epoch in the middle of training. Useful for big datasets.
-            if self.config.run_eval_steps is not None and (self.total_steps_done % self.config.run_eval_steps == 0):
+            if (
+                self.config.run_eval
+                and self.config.run_eval_steps is not None
+                and (self.total_steps_done % self.config.run_eval_steps == 0)
+            ):
                 self.eval_epoch()
                 self.model.train()
 
@@ -1281,30 +1167,6 @@ class Trainer:
     #######################
     # EVAL FUNCTIONS
     #######################
-
-    def _model_eval_step(
-        self,
-        batch: dict[str, Any],
-        model: TrainerModel,
-        criterion: nn.Module | list[nn.Module],
-        optimizer_idx: int | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Perform a evaluation forward pass. Compute model outputs and losses with no gradients.
-
-        Args:
-            batch (Dict): IBatch of inputs.
-            model (TrainerModel): Model to call evaluation.
-            criterion (nn.Module): Model criterion.
-            optimizer_idx (int, optional): Optimizer ID to define the closure in multi-optimizer training. Defaults to None.
-
-        Returns:
-            Tuple[Dict, Dict]: model outputs and losses.
-        """
-        input_args: list[Any] = [batch, criterion]
-        if optimizer_idx is not None:
-            input_args.append(optimizer_idx)
-
-        return self._get_model().eval_step(*input_args)
 
     def eval_step(
         self, batch: dict[str, Any] | list[Any], step: int
@@ -1362,22 +1224,14 @@ class Trainer:
         self.keep_avg_eval = KeepAverage() if self.keep_avg_eval is None else self.keep_avg_eval
 
         if self.eval_loader is None:
-            self.eval_loader = (
-                self.get_eval_dataloader(
-                    self.training_assets,
-                    self.eval_samples,
-                    verbose=True,
-                )
-                if self.config.run_eval
-                else None
-            )
+            self.eval_loader = self.get_eval_dataloader(self.training_assets, self.eval_samples, verbose=True)
 
         self.model.eval()
         self.c_logger.print_eval_start()
         loader_start_time = time.time()
         batch = None
         outputs = None
-        for cur_step, batch in enumerate(self.eval_loader):  # type: ignore[arg-type]
+        for cur_step, batch in enumerate(self.eval_loader):
             # format data
             batch = self.format_batch(batch)
             loader_time = time.time() - loader_start_time
@@ -1413,7 +1267,7 @@ class Trainer:
         If ```model.test_run()``` is defined, it will be called and it is expected to set and execute everything
         in the model.
 
-        Else if  ```mode.test()``` is defined, it will be called and it takes an test data loader as an argument
+        Else if  ```model.test()``` is defined, it will be called and it takes an test data loader as an argument
         and iterate over it.
         """
         self.model.eval()
@@ -1422,7 +1276,7 @@ class Trainer:
         try:
             test_outputs = model.test_run(self.training_assets)
         except NotImplementedError:
-            self.test_loader = self.get_test_dataloader(
+            self.test_loader = self.get_eval_dataloader(
                 self.training_assets,
                 self.test_samples if self.test_samples else self.eval_samples,
                 verbose=True,
@@ -1452,35 +1306,6 @@ class Trainer:
                     else:
                         self.best_loss = {"train_loss": ch["model_loss"], "eval_loss": None}
             logger.info(" > Starting with loaded last best loss %s", self.best_loss)
-
-    def test(self, model: TrainerModel | None = None, test_samples: list[str] | None = None) -> None:
-        """Run evaluation steps on the test data split.
-
-        You can either provide the model and the test samples
-        explicitly or the trainer uses values from the initialization.
-
-        Args:
-            model (TrainerModel, optional): Model to use for testing. If None, use the model given in the initialization.
-                Defaults to None.
-
-            test_samples (List[str], optional): List of test samples to use for testing. If None, use the test samples
-                given in the initialization. Defaults to None.
-        """
-        logger.info(" > USING TEST SET...")
-        self.keep_avg_eval = KeepAverage()
-
-        if model is not None:
-            self.model = model
-
-        eval_samples_cache = self.eval_samples
-        if test_samples is not None:
-            self.eval_samples = test_samples
-        else:
-            self.eval_samples = self.test_samples
-
-        self.eval_epoch()
-        self.c_logger.print_epoch_end(self.epochs_done, self.keep_avg_eval.avg_values)
-        self.eval_samples = eval_samples_cache
 
     ###################################
     # FIT FUNCTIONS

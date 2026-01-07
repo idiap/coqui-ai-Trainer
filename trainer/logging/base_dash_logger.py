@@ -25,9 +25,8 @@ class BaseDashboardLogger(ABC):
     def add_figure(self, title: str, figure: Figure, step: int) -> None:
         pass
 
-    @abstractmethod
     def add_config(self, config: TrainerConfig) -> None:
-        pass
+        self.add_text("model-config", f"<pre>{config.to_json()}</pre>", 0)
 
     @abstractmethod
     def add_audio(self, title: str, audio: Audio, step: int, sample_rate: int) -> None:
@@ -43,17 +42,17 @@ class BaseDashboardLogger(ABC):
     ) -> None:
         pass
 
-    @abstractmethod
     def add_scalars(self, scope_name: str, scalars: dict[str, float], step: int) -> None:
-        pass
+        for key, value in scalars.items():
+            self.add_scalar(f"{scope_name}/{key}", value, step)
 
-    @abstractmethod
     def add_figures(self, scope_name: str, figures: dict[str, Figure], step: int) -> None:
-        pass
+        for key, figure in figures.items():
+            self.add_figure(f"{scope_name}/{key}", figure, step)
 
-    @abstractmethod
     def add_audios(self, scope_name: str, audios: dict[str, Audio], step: int, sample_rate: int) -> None:
-        pass
+        for key, audio in audios.items():
+            self.add_audio(f"{scope_name}/{key}", audio, step, sample_rate=sample_rate)
 
     @abstractmethod
     def flush(self) -> None:

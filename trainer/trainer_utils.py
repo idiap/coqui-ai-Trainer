@@ -1,3 +1,4 @@
+import contextlib
 import importlib
 import importlib.util
 import os
@@ -5,7 +6,6 @@ import random
 from collections.abc import Callable, Iterator
 from typing import Any
 
-import numpy as np
 import torch
 from torch.nn import Parameter
 
@@ -13,22 +13,6 @@ from trainer.config import TrainerArgs, TrainerConfig
 from trainer.logger import logger
 from trainer.torch import NoamLR, StepwiseGradualLR
 from trainer.utils.distributed import rank_zero_logger_info
-
-
-def is_mlflow_available() -> bool:
-    return importlib.util.find_spec("mlflow") is not None
-
-
-def is_aim_available() -> bool:
-    return importlib.util.find_spec("aim") is not None
-
-
-def is_wandb_available() -> bool:
-    return importlib.util.find_spec("wandb") is not None
-
-
-def is_clearml_available() -> bool:
-    return importlib.util.find_spec("clearml") is not None
 
 
 def print_training_env(args: TrainerArgs, config: TrainerConfig) -> None:
@@ -103,7 +87,10 @@ def setup_torch_training_env(
 
     random.seed(training_seed)
     os.environ["PYTHONHASHSEED"] = str(training_seed)
-    np.random.seed(training_seed)
+    with contextlib.suppress(ImportError):
+        import numpy as np  # noqa: PLC0415
+
+        np.random.seed(training_seed)
     torch.manual_seed(training_seed)
     torch.cuda.manual_seed(training_seed)
 

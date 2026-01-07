@@ -3,16 +3,18 @@ from typing import Any
 
 import torch
 
+from trainer._types import Audio, Figure
 from trainer.logging.base_dash_logger import BaseDashboardLogger
-from trainer.trainer_utils import is_aim_available
 from trainer.utils.distributed import rank_zero_only
 
-if is_aim_available():
-    from aim import Audio, Image, Repo, Text  # pylint: disable=import-error
-    from aim.sdk.run import Run  # pylint: disable=import-error
+try:
+    import aim
+    from aim.sdk.run import Run
+except ImportError as e:
+    msg = "To use the Aim logger you need to install `aim`"
+    raise ImportError(msg) from e
 
 
-# pylint: disable=too-many-public-methods
 class AimLogger(BaseDashboardLogger):
     def __init__(
         self,
@@ -20,150 +22,115 @@ class AimLogger(BaseDashboardLogger):
         model_name: str,
         tags: str | None = None,
     ) -> None:
-        self._context = None
+        self._context: dict[str, str] = {}
         self.model_name = model_name
         self.run = Run(repo=repo, experiment=model_name)
-        self.repo = Repo(repo)
+        self.run.set_artifacts_uri(f"file://{repo}/artifacts")
 
         # query = f"runs.name == '{model_name}'"
-        # runs = self.repo.query_runs(query=query)
+        # runs = self.run.repo.query_runs(query=query)
 
         if tags:
             for tag in tags.split(","):
                 self.run.add_tag(tag)
 
-    # @staticmethod
-    # def __fig_to_pil(image):
-    #     """Convert Matplotlib figure to PIL image."""
-    #     return PIL.Image.frombytes("RGB", image.canvas.get_width_height(), image.canvas.tostring_rgb())
-
     @property
-    def context(self):
+    def context(self) -> dict[str, str]:
         return self._context
 
     @context.setter
-    def context(self, context):
+    def context(self, context: dict[str, str]) -> None:
         self._context = context
 
-    def model_weights(self, model, step):
+    def model_weights(self, model: torch.nn.Module, step: int) -> None:
         layer_num = 1
         for name, param in model.named_parameters():
             if param.numel() == 1:
-                self.run.log_metric(f"layer{layer_num}-{name}/value", param.max(), step)
+                self.run.track(param.max(), name=f"layer{layer_num}-{name}/value", step=step)
             else:
-                self.run.log_metric(f"layer{layer_num}-{name}/max", param.max(), step)
-                self.run.log_metric(f"layer{layer_num}-{name}/min", param.min(), step)
-                self.run.log_metric(f"layer{layer_num}-{name}/mean", param.mean(), step)
-                self.run.log_metric(f"layer{layer_num}-{name}/std", param.std(), step)
-                # MlFlow does not support histograms
-                # self.client.addå_histogram("layer{}-{}/param".format(layer_num, name), param, step)
-                # self.client.add_histogram("layer{}-{}/grad".format(layer_num, name), param.grad, step)
+                self.run.track(param.max(), name=f"layer{layer_num}-{name}/max", step=step)
+                self.run.track(param.min(), name=f"layer{layer_num}-{name}/min", step=step)
+                self.run.track(param.mean(), name=f"layer{layer_num}-{name}/mean", step=step)
+                self.run.track(param.std(), name=f"layer{layer_num}-{name}/std", step=step)
+                self.run.track(aim.Distribution(param.detach()), name=f"layer{layer_num}-{name}/param", step=step)
+                if param.grad is not None:
+                    self.run.track(aim.Distribution(param.grad), name=f"layer{layer_num}-{name}/grad", step=step)
             layer_num += 1
 
-    def add_config(self, config):
-        """TODO: Add config to AIM."""
-        # self.run['hparams'] = config.to_dict()
-        self.add_text("model-config", f"<pre>{config.to_json()}</pre>", 0)
-
-    def add_scalar(self, title, value, step):
+    def add_scalar(self, title: str, value: float, step: int) -> None:
+        if torch.is_tensor(value):
+            value = value.item()
         self.run.track(value, name=title, step=step, context=self.context)
 
-    def add_text(self, title, text, step):
+    def add_text(self, title: str, text: str, step: int) -> None:
         self.run.track(
-            Text(text),  # Pass a string you want to track
+            aim.Text(text),  # Pass a string you want to track
             name=title,  # The name of distributions
             step=step,  # Step index (optional)
             context=self.context,
         )
 
-    def add_figure(self, title, figure, step):
+    def add_figure(self, title: str, figure: Figure, step: int) -> None:
         self.run.track(
-            Image(figure, title),  # Pass image data and/or caption
+            aim.Image(figure, f"{title}/{step}.png"),  # Pass image data and/or caption
             name=title,  # The name of image set
             step=step,  # Step index (optional)
             context=self.context,
         )
 
-    def add_artifact(self, file_or_dir, name, artifact_type, aliases=None):  # pylint: disable=W0613
+    def add_artifact(
+        self, file_or_dir: str | os.PathLike[Any], name: str, artifact_type: str, aliases: list[str] | None = None
+    ) -> None:
         # AIM does not support artifacts
-        ...
+        pass
 
-    def add_audio(self, title, audio, step, sample_rate):
+    def add_audio(self, title: str, audio: Audio, step: int, sample_rate: int) -> None:
         self.run.track(
-            Audio(audio),  # Pass audio file or numpy array
-            name=title,  # The name of distributions
+            aim.Audio(audio),  # Pass audio file or numpy array
+            name=f"{title}/{step}.wav",  # The name of distributions
             step=step,  # Step index (optional)
             context=self.context,
         )
 
-    @rank_zero_only
-    def add_scalars(self, scope_name, scalars, step):
-        for key, value in scalars.items():
-            if torch.is_tensor(value):
-                value = value.item()
-            self.run.track(value, name=f"{scope_name}-{key}", step=step, context=self.context)
-
-    @rank_zero_only
-    def add_figures(self, scope_name, figures, step):
-        for key, value in figures.items():
-            title = f"{scope_name}/{key}/{step}.png"
-            self.run.track(
-                Image(value, title),  # Pass image data and/or caption
-                name=title,  # The name of image set
-                step=step,  # Step index (optional)
-                context=self.context,
-            )
-
-    @rank_zero_only
-    def add_audios(self, scope_name, audios, step, sample_rate):
-        for key, value in audios.items():
-            title = f"{scope_name}/{key}/{step}.wav"
-            self.run.track(
-                Audio(value),  # Pass audio file or numpy array
-                name=title,  # The name of distributions
-                step=step,  # Step index (optional)
-                context=self.context,
-            )
-
-    def train_step_stats(self, step, stats):
+    def train_step_stats(self, step: int, stats: dict[str, float]) -> None:
         self.context = {"subset": "train"}
         super().train_step_stats(step, stats)
 
-    def train_epoch_stats(self, step, stats):
+    def train_epoch_stats(self, step: int, stats: dict[str, float]) -> None:
         self.context = {"subset": "train"}
         super().train_epoch_stats(step, stats)
 
-    def train_figures(self, step, figures):
+    def train_figures(self, step: int, figures: dict[str, Figure]) -> None:
         self.context = {"subset": "train"}
         super().train_figures(step, figures)
 
-    def train_audios(self, step, audios, sample_rate):
+    def train_audios(self, step: int, audios: dict[str, Audio], sample_rate: int) -> None:
         self.context = {"subset": "train"}
         super().train_audios(step, audios, sample_rate)
 
-    def eval_stats(self, step, stats):
+    def eval_stats(self, step: int, stats: dict[str, float]) -> None:
         self.context = {"subset": "eval"}
         super().eval_stats(step, stats)
 
-    def eval_figures(self, step, figures):
+    def eval_figures(self, step: int, figures: dict[str, Figure]) -> None:
         self.context = {"subset": "eval"}
         super().eval_figures(step, figures)
 
-    def eval_audios(self, step, audios, sample_rate):
+    def eval_audios(self, step: int, audios: dict[str, Audio], sample_rate: int) -> None:
         self.context = {"subset": "eval"}
         super().eval_audios(step, audios, sample_rate)
 
-    def test_audios(self, step, audios, sample_rate):
+    def test_audios(self, step: int, audios: dict[str, Audio], sample_rate: int) -> None:
         self.context = {"subset": "test"}
         super().test_audios(step, audios, sample_rate)
 
-    def test_figures(self, step, figures):
+    def test_figures(self, step: int, figures: dict[str, Figure]) -> None:
         self.context = {"subset": "test"}
         super().test_figures(step, figures)
 
-    def flush(self):
+    def flush(self) -> None:
         pass
 
     @rank_zero_only
-    def finish(self):
-        super().close()
+    def finish(self) -> None:
+        self.run.close()

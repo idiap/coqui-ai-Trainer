@@ -51,5 +51,5 @@ def test_train_mnist(tmp_path):
 
     assert loss3 > loss4
 
-    with pytest.raises(ValueError, match="cannot both be None"):
+    with pytest.raises(ValueError, match="cannot be None"):
         Trainer(args, MnistModelConfig(), output_path=tmp_path, model=None)
