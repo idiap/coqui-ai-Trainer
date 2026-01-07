@@ -1,11 +1,11 @@
 """Get detailed info about the working environment."""
 
+import contextlib
 import json
 import os
 import platform
 import sys
 
-import numpy
 import torch
 
 import trainer
@@ -32,8 +32,13 @@ def cuda_info():
 
 
 def package_info():
+    numpy_version = "N/A"
+    with contextlib.suppress(ImportError):
+        import numpy as np  # noqa: PLC0415
+
+        numpy_version = np.__version__
     return {
-        "numpy": numpy.__version__,
+        "numpy": numpy_version,
         "PyTorch_version": torch.__version__,
         "PyTorch_debug": torch.version.debug,
         "Trainer": trainer.__version__,

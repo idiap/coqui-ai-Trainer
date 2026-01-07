@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import soundfile as sf
 import torch
 
 from trainer._types import Audio, Figure
@@ -12,11 +11,12 @@ from trainer.utils.distributed import rank_zero_only
 
 try:
     import mlflow
+    import soundfile as sf
     from mlflow.tracking import MlflowClient
     from mlflow.tracking.context.registry import resolve_tags
     from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 except ImportError as e:
-    msg = "To use the MLflow logger you need to install `mlflow`"
+    msg = "To use the MLflow logger you need to install: mlflow, soundfile"
     raise ImportError(msg) from e
 
 

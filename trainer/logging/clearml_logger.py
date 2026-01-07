@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import soundfile as sf
 import torch
 
 from trainer._types import Audio, Figure
@@ -12,9 +11,10 @@ from trainer.logging.base_dash_logger import BaseDashboardLogger
 from trainer.utils.distributed import rank_zero_only
 
 try:
+    import soundfile as sf
     from clearml import Task
 except ImportError as e:
-    msg = "To use the ClearML logger you need to install `clearml`"
+    msg = "To use the ClearML logger you need to install: clearml, soundfile"
     raise ImportError(msg) from e
 
 if TYPE_CHECKING:

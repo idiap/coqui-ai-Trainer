@@ -59,13 +59,8 @@ classifiers = [
 dependencies = [
     "coqpit-config>=0.2.2,<0.3.0",
     "fsspec>=2023.6.0",
-    "numpy>=1.25.2; python_version < '3.12'",
-    "numpy>=1.26.0; python_version == '3.12'",
-    "numpy>=2.1.0; python_version == '3.13'",
-    "numpy>=2.3.2; python_version >= '3.13'",
     "packaging>=21.0",
-    "psutil>=7",
-    "soundfile>=0.12.0",
+    "psutil>=5",
     "tensorboard>=2.17.1",
     "torch>=2.2; python_version < '3.12'",
     "torch>=2.3; python_version == '3.12'",
@@ -75,8 +70,8 @@ dependencies = [
 
 [project.optional-dependencies]
 aim = ["aim>=3.21; python_version < '3.13'"]
-clearml = ["clearml>=2"]
-mlflow = ["mlflow>=3.6"]
+clearml = ["clearml>=2", "soundfile>=0.12.0"]
+mlflow = ["mlflow>=3.7", "soundfile>=0.12.0"]
 wandb = ["wandb>=0.19"]
 
 [dependency-groups]
@@ -89,6 +84,8 @@ dev = [
 test = [
     "accelerate>=1.0.0",
     "matplotlib>=3.10.5",
+    "numpy>=1.25.2; python_version < '3.11'",
+    "numpy>=2.3.2; python_version >= '3.11'",
     "torchvision>=0.21.0",
 ]
 mypy = [

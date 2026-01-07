@@ -1,3 +1,4 @@
+import contextlib
 import importlib
 import importlib.util
 import os
@@ -5,7 +6,6 @@ import random
 from collections.abc import Callable, Iterator
 from typing import Any
 
-import numpy as np
 import torch
 from torch.nn import Parameter
 
@@ -87,7 +87,10 @@ def setup_torch_training_env(
 
     random.seed(training_seed)
     os.environ["PYTHONHASHSEED"] = str(training_seed)
-    np.random.seed(training_seed)
+    with contextlib.suppress(ImportError):
+        import numpy as np  # noqa: PLC0415
+
+        np.random.seed(training_seed)
     torch.manual_seed(training_seed)
     torch.cuda.manual_seed(training_seed)
 
