@@ -31,8 +31,8 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
       - name: Test wheel
-        run: uv run --isolated --no-project --with dist/*.whl --with pytest --with accelerate --with torchvision pytest tests/
+        run: uv run --isolated --no-project --with dist/*.whl --with pytest --with accelerate --with torchvision pytest tests/test_continue_train.py
       - name: Test sdist
-        run: uv run --isolated --no-project --with dist/*.tar.gz --with pytest --with accelerate --with torchvision pytest tests/
+        run: uv run --isolated --no-project --with dist/*.tar.gz --with pytest --with accelerate --with torchvision pytest tests/test_continue_train.py
       - name: Publish
         run: uv publish

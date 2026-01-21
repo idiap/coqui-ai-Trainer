@@ -62,13 +62,15 @@ dependencies = [
     "packaging>=21.0",
     "psutil>=5",
     "tensorboard>=2.17.1",
-    "torch>=2.2; python_version < '3.12'",
-    "torch>=2.3; python_version == '3.12'",
-    "torch>=2.6; python_version == '3.13'",
-    "torch>=2.9; python_version >= '3.14'",
 ]
 
 [project.optional-dependencies]
+cpu = [
+    "torch>=2.2",
+]
+cuda = [
+    "torch>=2.2",
+]
 aim = ["aim>=3.21; python_version < '3.13'"]
 clearml = ["clearml>=2", "soundfile>=0.12.0"]
 mlflow = ["mlflow>=3.7", "soundfile>=0.12.0"]
@@ -84,9 +86,8 @@ dev = [
 test = [
     "accelerate>=1.0.0",
     "matplotlib>=3.10.5",
-    "numpy>=1.25.2; python_version < '3.11'",
-    "numpy>=2.3.2; python_version >= '3.11'",
-    "torchvision>=0.21.0",
+    "numpy>=1.25.2",
+    "torchvision>=0.17.0",
 ]
 mypy = [
     "mypy==1.19.1",
@@ -94,7 +95,35 @@ mypy = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "test"]
+default-groups = ["dev"]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'"
+]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cuda" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cuda", extra = "cuda" },
+]
+torchvision = [
+  { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [project.urls]
 Homepage = "https://github.com/idiap/coqui-ai-Trainer"
