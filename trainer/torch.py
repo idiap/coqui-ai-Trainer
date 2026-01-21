@@ -86,12 +86,12 @@ class NoamLR(torch.optim.lr_scheduler._LRScheduler):
         self.warmup_steps = float(warmup_steps)
         super().__init__(optimizer, last_epoch)
 
-    def get_lr(self) -> list[float]:
+    def get_lr(self) -> list[float | torch.Tensor]:
         if is_pytorch_at_least_2_4():
             _warn_get_lr_called_within_step(self)
         return self._get_closed_form_lr()
 
-    def _get_closed_form_lr(self):
+    def _get_closed_form_lr(self) -> list[float | torch.Tensor]:
         step = self.last_epoch + 1
         scale = self.warmup_steps**0.5 * min(step * self.warmup_steps**-1.5, step**-0.5)
         return [base_lr * scale for base_lr in self.base_lrs]
@@ -108,7 +108,7 @@ class StepwiseGradualLR(torch.optim.lr_scheduler._LRScheduler):
         self.step_thresholds, self.learning_rates = zip(*gradual_learning_rates, strict=True)
         super().__init__(optimizer, last_epoch)
 
-    def get_lr(self):
+    def get_lr(self) -> list[float | torch.Tensor]:
         if is_pytorch_at_least_2_4():
             _warn_get_lr_called_within_step(self)
 
@@ -119,7 +119,7 @@ class StepwiseGradualLR(torch.optim.lr_scheduler._LRScheduler):
         lr = self.learning_rates[index]
         return [lr for _ in self.optimizer.param_groups]
 
-    def _get_closed_form_lr(self):
+    def _get_closed_form_lr(self) -> list[float | torch.Tensor]:
         index = self._find_index(self.last_epoch)
         lr = self.learning_rates[index]
         return [lr for _ in self.base_lrs]
