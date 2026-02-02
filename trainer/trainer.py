@@ -1423,7 +1423,6 @@ class Trainer:
             scaler=self.scaler if self.use_amp_scaler else None,
             keep_all_best=self.config.save_all_best,
             keep_after=self.config.save_best_after,
-            save_func=self.dashboard_logger.save_model,
         )
 
     @rank_zero_only
@@ -1443,7 +1442,6 @@ class Trainer:
             scaler=self.scaler if self.use_amp_scaler else None,
             model_loss={"train_loss": train_loss, "eval_loss": eval_loss},
             save_n_checkpoints=self.config.save_n_checkpoints,
-            save_func=self.dashboard_logger.save_model,
         )
 
     @rank_zero_only

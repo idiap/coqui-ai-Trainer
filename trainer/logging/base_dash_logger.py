@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING, Any
 
 from trainer._types import Audio, Figure
 from trainer.config import TrainerConfig
-from trainer.io import save_fsspec
-from trainer.utils.distributed import rank_zero_only
 
 if TYPE_CHECKING:
     import torch
@@ -61,11 +59,6 @@ class BaseDashboardLogger(ABC):
     @abstractmethod
     def finish(self) -> None:
         pass
-
-    @staticmethod
-    @rank_zero_only
-    def save_model(state: dict[str, Any], path: str) -> None:
-        save_fsspec(state, path)
 
     def train_step_stats(self, step: int, stats: dict[str, float]) -> None:
         self.add_scalars(scope_name="TrainIterStats", scalars=stats, step=step)

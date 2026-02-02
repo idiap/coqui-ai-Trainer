@@ -131,8 +131,3 @@ class ClearMLLogger(BaseDashboardLogger):
         """Close the ClearML task."""
         if self.run:
             self.run.close()
-
-    @staticmethod
-    @rank_zero_only
-    def save_model(state: Any, path: str) -> None:
-        torch.save(state, path)
