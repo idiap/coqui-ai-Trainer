@@ -79,7 +79,6 @@ class Trainer:
         model: TrainerModel | None = None,
         train_samples: list[Any] | None = None,
         eval_samples: list[Any] | None = None,
-        test_samples: list[Any] | None = None,
         train_loader: DataLoader[Any] | None = None,
         eval_loader: DataLoader[Any] | None = None,
         parse_command_line_args: bool = True,
@@ -125,10 +124,6 @@ class Trainer:
 
             eval_loader (DataLoader):
                 A pytorch data loader object for evaluation epochs. Leave as None to be generated during training. Defaults to None.
-
-            test_samples (List):
-                A list of test samples used by the `get_eval_dataloader` to init the `dataset` and the
-                `data_loader`. If None, the ```model.test_run()``` is expected to load the data. Defaults to None.
 
             parse_command_line_args (bool):
                 If true, parse command-line arguments and update `TrainerArgs` and model `config` values. Set it
@@ -237,12 +232,10 @@ class Trainer:
 
         self.train_samples: list[Any] | None = None
         self.eval_samples: list[Any] | None = None
-        self.test_samples: list[Any] | None = None
         if train_samples is not None:
             # use provided samples, else expecting to load samples in `model.get_data_loader()`
             self.train_samples = train_samples
             self.eval_samples = eval_samples
-            self.test_samples = test_samples
 
         # define custom train and eval loader
         self.train_loader = train_loader
@@ -431,7 +424,6 @@ class Trainer:
             logger.info("[!] Small Run, only using %i samples.", small_run)
             self.train_samples = None if self.train_samples is None else self.train_samples[:small_run]
             self.eval_samples = None if self.eval_samples is None else self.eval_samples[:small_run]
-            self.test_samples = None if self.test_samples is None else self.test_samples[:small_run]
 
     @staticmethod
     def init_training(
@@ -1253,10 +1245,7 @@ class Trainer:
         try:
             test_outputs = model.test_run()
         except NotImplementedError:
-            self.test_loader = self.get_eval_dataloader(
-                self.test_samples if self.test_samples else self.eval_samples,
-                verbose=True,
-            )
+            self.test_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
             # use test_loader to load test samples
             with suppress(NotImplementedError):
                 test_outputs = model.test(self.test_loader, None)
