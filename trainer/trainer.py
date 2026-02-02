@@ -82,7 +82,6 @@ class Trainer:
         test_samples: list[Any] | None = None,
         train_loader: DataLoader[Any] | None = None,
         eval_loader: DataLoader[Any] | None = None,
-        training_assets: dict[str, Any] | None = None,
         parse_command_line_args: bool = True,
         callbacks: dict[str, Callback] | None = None,
         gpu: int | None = None,
@@ -131,10 +130,6 @@ class Trainer:
                 A list of test samples used by the `get_eval_dataloader` to init the `dataset` and the
                 `data_loader`. If None, the ```model.test_run()``` is expected to load the data. Defaults to None.
 
-            training_assets (Dict):
-                A dictionary of assets to be used at training and passed to the model's ```train_log(), eval_log(), get_data_loader()```
-                during training. It can include  `AudioProcessor` or/and `Tokenizer`. Defaults to {}.
-
             parse_command_line_args (bool):
                 If true, parse command-line arguments and update `TrainerArgs` and model `config` values. Set it
                 to false if you parse the arguments yourself. Defaults to True.
@@ -156,14 +151,11 @@ class Trainer:
             >>> trainer.fit()
 
         TODO:
-                - Wrap model for not calling .module in DDP.
                 - Deepspeed integration
                 - Profiler integration.
                 - Overfitting to a batch.
                 - TPU training
         """
-        if training_assets is None:
-            training_assets = {}
         if callbacks is None:
             callbacks = {}
 
@@ -198,7 +190,6 @@ class Trainer:
         self.args = args
         self.config = config
         self.output_path = Path(output_path)
-        self.training_assets = training_assets
         self.grad_accum_steps = args.grad_accum_steps
         self.overfit_batch = args.overfit_batch
         self.skip_train_epoch = args.skip_train_epoch
@@ -579,7 +570,6 @@ class Trainer:
         self,
         model: TrainerModel,
         config: TrainerConfig,
-        assets: dict[str, Any],
         samples: list[Any] | None,
         *,
         is_eval: bool,
@@ -588,7 +578,6 @@ class Trainer:
     ) -> DataLoader[Any]:
         loader = model.get_data_loader(
             config=config,
-            assets=assets,
             is_eval=is_eval,
             samples=samples,
             verbose=verbose,
@@ -606,9 +595,7 @@ class Trainer:
             return self.model
         return self.wrapped_model
 
-    def get_train_dataloader(
-        self, training_assets: dict[str, Any], samples: list[Any] | None, *, verbose: bool = True
-    ) -> DataLoader[Any]:
+    def get_train_dataloader(self, samples: list[Any] | None, *, verbose: bool = True) -> DataLoader[Any]:
         """Initialize and return a training data loader.
 
         Call ```model.get_train_data_loader``` if it is implemented, else call ```model.get_data_loader```
@@ -626,7 +613,6 @@ class Trainer:
         try:
             return model.get_train_data_loader(
                 self.config,
-                self.training_assets,
                 samples,
                 verbose,
                 self.num_gpus,
@@ -636,16 +622,13 @@ class Trainer:
             return self._get_loader(
                 model,
                 self.config,
-                training_assets,
                 samples,
                 is_eval=False,
                 verbose=verbose,
                 num_gpus=self.num_gpus,
             )
 
-    def get_eval_dataloader(
-        self, training_assets: dict[str, Any], samples: list[Any] | None, *, verbose: bool
-    ) -> DataLoader[Any]:
+    def get_eval_dataloader(self, samples: list[Any] | None, *, verbose: bool) -> DataLoader[Any]:
         """Initialize and return a evaluation data loader.
 
         Call ```model.get_data_loader``` and set ```is_eval=True```.
@@ -661,7 +644,6 @@ class Trainer:
         return self._get_loader(
             self._get_model(),
             self.config,
-            training_assets,
             samples,
             is_eval=True,
             verbose=verbose,
@@ -1110,7 +1092,6 @@ class Trainer:
         # initialize the data loader
         if self.train_loader is None:
             self.train_loader = self.get_train_dataloader(
-                self.training_assets,
                 self.train_samples,
                 verbose=True,
             )
@@ -1221,7 +1202,7 @@ class Trainer:
         self.keep_avg_eval = KeepAverage() if self.keep_avg_eval is None else self.keep_avg_eval
 
         if self.eval_loader is None:
-            self.eval_loader = self.get_eval_dataloader(self.training_assets, self.eval_samples, verbose=True)
+            self.eval_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
 
         self.model.eval()
         self.c_logger.print_eval_start()
@@ -1247,7 +1228,6 @@ class Trainer:
                     batch,
                     outputs,
                     self.dashboard_logger,
-                    self.training_assets,
                     self.total_steps_done,
                 )
             self.dashboard_logger.eval_stats(self.total_steps_done, self.keep_avg_eval.avg_values)
@@ -1271,18 +1251,17 @@ class Trainer:
         model = self._get_model()
         test_outputs = None
         try:
-            test_outputs = model.test_run(self.training_assets)
+            test_outputs = model.test_run()
         except NotImplementedError:
             self.test_loader = self.get_eval_dataloader(
-                self.training_assets,
                 self.test_samples if self.test_samples else self.eval_samples,
                 verbose=True,
             )
             # use test_loader to load test samples
             with suppress(NotImplementedError):
-                test_outputs = model.test(self.training_assets, self.test_loader, None)
+                test_outputs = model.test(self.test_loader, None)
         with suppress(NotImplementedError):
-            model.test_log(test_outputs, self.dashboard_logger, self.training_assets, self.total_steps_done)
+            model.test_log(test_outputs, self.dashboard_logger, self.total_steps_done)
 
     def _restore_best_loss(self) -> None:
         """Restore the best loss.
@@ -1509,7 +1488,6 @@ class Trainer:
                     batch,
                     outputs,
                     self.dashboard_logger,
-                    self.training_assets,
                     self.total_steps_done,
                 )
 

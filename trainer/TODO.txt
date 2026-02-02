@@ -1,14 +1,10 @@
 + Accumulate gradients b/w batches.
 + Abstract DashLogger
-+ MLFlow logger
 + Profiler integration.
-+ Moving `training_assets` to the model implementation.
-- Wrap model for not calling .module in DDP.
 - Overfitting to a batch.
 - TPU training
 - BaseTrainingConfig
 - Add Checkpoint manager
-- Use `logging` instead of `print`
 - Auto scaling the batch size and find the largest batch size for training.
 - Stochastic weight averaging
 - Deepspeed integration

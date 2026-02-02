@@ -61,7 +61,7 @@ class MnistModel(TrainerModel):
     def get_criterion(self):
         return torch.nn.NLLLoss()
 
-    def get_data_loader(self, config, assets, *, is_eval, samples=None, verbose=False, num_gpus=1, rank=0):  # pylint: disable=unused-argument
+    def get_data_loader(self, config, *, is_eval, samples=None, verbose=False, num_gpus=1, rank=0):
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
         dataset.data = dataset.data[:256]
@@ -72,7 +72,7 @@ class MnistModel(TrainerModel):
 def create_trainer(config, model, output_path, gpu, continue_path=None, restore_path=None):
     args = TrainerArgs(continue_path=continue_path, restore_path=restore_path)
     trainer = Trainer(args, config, output_path=output_path, model=model, gpu=gpu)
-    trainer.train_loader = trainer.get_train_dataloader(trainer.training_assets, trainer.train_samples)
+    trainer.train_loader = trainer.get_train_dataloader(trainer.train_samples)
     trainer.keep_avg_train = KeepAverage()
     return trainer
 

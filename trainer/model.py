@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from trainer._types import ValueListDict
+from trainer.config import TrainerConfig
 
 if TYPE_CHECKING:
     from trainer.trainer import Trainer
@@ -75,7 +76,6 @@ class TrainerModel(ABC, nn.Module):
             batch (Dict): Model inputs used at the previous training step.
             outputs (Dict): Model outputs generated at the previoud training step.
             logger (Logger): Logger instance to log training plots.
-            assets (Dict): Assets to be used for logging from the trainer's closure.
             steps (int): Number of training steps taken so far.
 
         Returns:
@@ -108,12 +108,20 @@ class TrainerModel(ABC, nn.Module):
         raise NotImplementedError(msg)
 
     @abstractmethod
-    def get_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
+    def get_data_loader(
+        self,
+        config: TrainerConfig,
+        *,
+        is_eval: bool = False,
+        samples: list[Any] | None = None,
+        verbose: bool = True,
+        num_gpus: int = 1,
+        rank: int = 0,
+    ) -> torch.utils.data.DataLoader[Any]:
         """Get data loader for the model.
 
         Args:
             config (TrainerConfig): Configuration object.
-            assets (Dict): Additional assets to be used for data loading.
             is_eval (bool): If True, returns evaluation data loader.
             samples (Union[List[Dict], List[List]]): List of samples to be used for data loading.
             verbose (bool): If True, prints data loading information.
@@ -133,7 +141,7 @@ class TrainerModel(ABC, nn.Module):
     def test_run(self, *args: Any, **kwargs: Any):
         raise NotImplementedError
 
-    def test(self, assets: dict[str, Any], data_loader: torch.utils.data.DataLoader[Any], outputs: Any | None = None):
+    def test(self, data_loader: torch.utils.data.DataLoader[Any], outputs: Any | None = None):
         raise NotImplementedError
 
     def test_log(self, *args: Any, **kwargs: Any):
