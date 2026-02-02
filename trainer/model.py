@@ -6,6 +6,7 @@ from torch import nn
 
 from trainer._types import ValueListDict
 from trainer.config import TrainerConfig
+from trainer.logging import BaseDashboardLogger
 
 if TYPE_CHECKING:
     from trainer.trainer import Trainer
@@ -138,16 +139,13 @@ class TrainerModel(ABC, nn.Module):
     def get_train_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
         raise NotImplementedError
 
-    def test_run(self, *args: Any, **kwargs: Any):
+    def test_run(self, trainer: "Trainer") -> dict[str, Any]:
         raise NotImplementedError
 
-    def test(self, data_loader: torch.utils.data.DataLoader[Any], outputs: Any | None = None):
+    def test_log(self, outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int) -> None:
         raise NotImplementedError
 
-    def test_log(self, *args: Any, **kwargs: Any):
-        raise NotImplementedError
-
-    def optimize(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    def optimize(self, batch: dict[str, Any] | list[Any], trainer: "Trainer") -> tuple[dict[str, Any], dict[str, Any]]:
         """Model specific optimization step that must perform the following steps.
 
             1. Forward pass

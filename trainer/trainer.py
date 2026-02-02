@@ -42,8 +42,7 @@ from trainer.io import (
     save_best_model,
     save_checkpoint,
 )
-from trainer.logging import ConsoleLogger, DummyLogger, logger_factory
-from trainer.logging.base_dash_logger import BaseDashboardLogger
+from trainer.logging import BaseDashboardLogger, ConsoleLogger, DummyLogger, logger_factory
 from trainer.model import TrainerModel
 from trainer.trainer_utils import (
     get_optimizer,
@@ -1233,23 +1232,13 @@ class Trainer:
 
         Test run is expected to pass over test samples and produce logging artifacts.
 
-        If ```model.test_run()``` is defined, it will be called and it is expected to set and execute everything
-        in the model.
-
-        Else if  ```model.test()``` is defined, it will be called and it takes an test data loader as an argument
-        and iterate over it.
+        If ```model.test_run()``` is defined, it will be called and it is
+        expected to set and execute everything in the model.
         """
         self.model.eval()
         model = self._get_model()
-        test_outputs = None
-        try:
-            test_outputs = model.test_run()
-        except NotImplementedError:
-            self.test_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
-            # use test_loader to load test samples
-            with suppress(NotImplementedError):
-                test_outputs = model.test(self.test_loader, None)
         with suppress(NotImplementedError):
+            test_outputs = model.test_run(self)
             model.test_log(test_outputs, self.dashboard_logger, self.total_steps_done)
 
     def _restore_best_loss(self) -> None:
