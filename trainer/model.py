@@ -139,9 +139,6 @@ class TrainerModel(ABC, nn.Module):
     def test_log(self, *args: Any, **kwargs: Any):
         raise NotImplementedError
 
-    def init_for_training(self) -> None:
-        """Initialize model for training."""
-
     def optimize(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         """Model specific optimization step that must perform the following steps.
 

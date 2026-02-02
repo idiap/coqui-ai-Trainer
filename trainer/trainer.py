@@ -266,9 +266,6 @@ class Trainer:
             raise ValueError(msg)
         self.model = model
 
-        # init model's training assets
-        self.model.init_for_training()
-
         # setup criterion
         self.criterion = self.get_criterion(self.model)
 
