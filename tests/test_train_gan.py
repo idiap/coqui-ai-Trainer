@@ -119,7 +119,7 @@ def test_overfit_mnist_simple_gan(tmp_path):
             return [discriminator_optimizer, generator_optimizer]
 
         def get_criterion(self):
-            return nn.BCELoss()
+            return [nn.BCELoss(), nn.BCELoss()]
 
         def get_data_loader(self, config, is_eval, samples, verbose):
             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -210,7 +210,7 @@ def test_overfit_accelerate_mnist_simple_gan(tmp_path):
             return [discriminator_optimizer, generator_optimizer]
 
         def get_criterion(self):
-            return nn.BCELoss()
+            return [nn.BCELoss(), nn.BCELoss()]
 
         def get_data_loader(self, config, is_eval, samples, verbose):
             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -272,12 +272,12 @@ def test_overfit_manual_optimize_mnist_simple_gan(tmp_path):
             logits = self.discriminator(imgs_gen.detach())
             fake = torch.zeros(imgs.size(0), 1)
             fake = fake.type_as(imgs)
-            loss_fake = trainer.criterion(logits, fake)
+            loss_fake = trainer.criterion[0](logits, fake)
 
             valid = torch.ones(imgs.size(0), 1)
             valid = valid.type_as(imgs)
             logits = self.discriminator(imgs)
-            loss_real = trainer.criterion(logits, valid)
+            loss_real = trainer.criterion[0](logits, valid)
             loss_disc = (loss_real + loss_fake) / 2
 
             # step dicriminator
@@ -292,7 +292,7 @@ def test_overfit_manual_optimize_mnist_simple_gan(tmp_path):
             valid = valid.type_as(imgs)
 
             logits = self.discriminator(imgs_gen)
-            loss_gen = trainer.criterion(logits, valid)
+            loss_gen = trainer.criterion[0](logits, valid)
 
             # step generator
             trainer.optimizer[1].zero_grad()
@@ -301,7 +301,7 @@ def test_overfit_manual_optimize_mnist_simple_gan(tmp_path):
             return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
 
         @torch.inference_mode()
-        def eval_step(self, batch, criterion):
+        def eval_step(self, batch, criterion, optimizer_idx=None):
             imgs, _ = batch
 
             # sample noise
@@ -322,7 +322,7 @@ def test_overfit_manual_optimize_mnist_simple_gan(tmp_path):
             return [discriminator_optimizer, generator_optimizer]
 
         def get_criterion(self):
-            return nn.BCELoss()
+            return [nn.BCELoss(), nn.BCELoss()]
 
         def get_data_loader(self, config, is_eval, samples, verbose):
             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -382,12 +382,12 @@ def test_overfit_manual_optimize_grad_accum_mnist_simple_gan(tmp_path):
             logits = self.discriminator(imgs_gen.detach())
             fake = torch.zeros(imgs.size(0), 1)
             fake = fake.type_as(imgs)
-            loss_fake = trainer.criterion(logits, fake)
+            loss_fake = trainer.criterion[0](logits, fake)
 
             valid = torch.ones(imgs.size(0), 1)
             valid = valid.type_as(imgs)
             logits = self.discriminator(imgs)
-            loss_real = trainer.criterion(logits, valid)
+            loss_real = trainer.criterion[0](logits, valid)
             loss_disc = (loss_real + loss_fake) / 2
 
             # step dicriminator
@@ -404,7 +404,7 @@ def test_overfit_manual_optimize_grad_accum_mnist_simple_gan(tmp_path):
             valid = valid.type_as(imgs)
 
             logits = self.discriminator(imgs_gen)
-            loss_gen = trainer.criterion(logits, valid)
+            loss_gen = trainer.criterion[0](logits, valid)
 
             # step generator
             self.scaled_backward(loss_gen, trainer)
@@ -414,7 +414,7 @@ def test_overfit_manual_optimize_grad_accum_mnist_simple_gan(tmp_path):
             return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
 
         @torch.inference_mode()
-        def eval_step(self, batch, criterion):
+        def eval_step(self, batch, criterion, optimizer_idx=None):
             imgs, _ = batch
 
             # sample noise
@@ -435,7 +435,7 @@ def test_overfit_manual_optimize_grad_accum_mnist_simple_gan(tmp_path):
             return [discriminator_optimizer, generator_optimizer]
 
         def get_criterion(self):
-            return nn.BCELoss()
+            return [nn.BCELoss(), nn.BCELoss()]
 
         def get_data_loader(self, config, is_eval, samples, verbose):
             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -497,12 +497,12 @@ def test_overfit_manual_accelerate_optimize_grad_accum_mnist_simple_gan(tmp_path
             logits = self.discriminator(imgs_gen.detach())
             fake = torch.zeros(imgs.size(0), 1)
             fake = fake.type_as(imgs)
-            loss_fake = trainer.criterion(logits, fake)
+            loss_fake = trainer.criterion[0](logits, fake)
 
             valid = torch.ones(imgs.size(0), 1)
             valid = valid.type_as(imgs)
             logits = self.discriminator(imgs)
-            loss_real = trainer.criterion(logits, valid)
+            loss_real = trainer.criterion[0](logits, valid)
             loss_disc = (loss_real + loss_fake) / 2
 
             # step dicriminator
@@ -519,7 +519,7 @@ def test_overfit_manual_accelerate_optimize_grad_accum_mnist_simple_gan(tmp_path
             valid = valid.type_as(imgs)
 
             logits = self.discriminator(imgs_gen)
-            loss_gen = trainer.criterion(logits, valid)
+            loss_gen = trainer.criterion[0](logits, valid)
 
             # step generator
             self.scaled_backward(loss_gen, trainer)
@@ -529,7 +529,7 @@ def test_overfit_manual_accelerate_optimize_grad_accum_mnist_simple_gan(tmp_path
             return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
 
         @torch.inference_mode()
-        def eval_step(self, batch, criterion):
+        def eval_step(self, batch, criterion, optimizer_idx=None):
             imgs, _ = batch
 
             # sample noise
@@ -550,7 +550,7 @@ def test_overfit_manual_accelerate_optimize_grad_accum_mnist_simple_gan(tmp_path
             return [discriminator_optimizer, generator_optimizer]
 
         def get_criterion(self):
-            return nn.BCELoss()
+            return [nn.BCELoss(), nn.BCELoss()]
 
         def get_data_loader(self, config, is_eval, samples, verbose):
             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])

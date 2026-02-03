@@ -82,10 +82,10 @@ def test_train_mnist(tmp_path):
     )
     trainer = create_trainer(config, MnistModel(), tmp_path, gpu=0 if is_cuda else None)
 
-    assert trainer.scheduler.get_last_lr() == [LR_1]
+    assert trainer.scheduler[0].get_last_lr() == [LR_1]
 
     run_steps(trainer, 0, 1)
-    assert trainer.scheduler.get_last_lr() == [LR_1]
+    assert trainer.scheduler[0].get_last_lr() == [LR_1]
 
     run_steps(trainer, 1, 2)
-    assert trainer.scheduler.get_last_lr() == [LR_2]
+    assert trainer.scheduler[0].get_last_lr() == [LR_2]

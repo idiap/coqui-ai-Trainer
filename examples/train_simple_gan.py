@@ -93,12 +93,12 @@ class GANModel(TrainerModel):
         logits = self.discriminator(imgs_gen.detach())
         fake = torch.zeros(imgs.size(0), 1)
         fake = fake.type_as(imgs)
-        loss_fake = trainer.criterion(logits, fake)
+        loss_fake = trainer.criterion[0](logits, fake)
 
         valid = torch.ones(imgs.size(0), 1)
         valid = valid.type_as(imgs)
         logits = self.discriminator(imgs)
-        loss_real = trainer.criterion(logits, valid)
+        loss_real = trainer.criterion[0](logits, valid)
         loss_disc = (loss_real + loss_fake) / 2
 
         # step dicriminator
@@ -115,7 +115,7 @@ class GANModel(TrainerModel):
         valid = valid.type_as(imgs)
 
         logits = self.discriminator(imgs_gen)
-        loss_gen = trainer.criterion(logits, valid)
+        loss_gen = trainer.criterion[0](logits, valid)
 
         # step generator
         self.scaled_backward(loss_gen, trainer)

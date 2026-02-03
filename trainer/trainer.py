@@ -1,3 +1,4 @@
+import copy
 import functools
 import gc
 import logging
@@ -9,7 +10,6 @@ import time
 import traceback
 from collections.abc import Generator
 from contextlib import nullcontext, suppress
-from inspect import signature
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -29,8 +29,6 @@ from trainer.generic_utils import (
     get_git_branch,
     is_pytorch_at_least_2_3,
     is_pytorch_at_least_2_4,
-    iter_single_or_list,
-    map_single_or_list,
     remove_experiment_folder,
     set_partial_state_dict,
     to_cuda,
@@ -250,7 +248,7 @@ class Trainer:
         self.model = model
 
         # setup criterion
-        self.criterion = self.get_criterion(self.model)
+        self.criterion = self.get_criterion()
 
         # DISTRIBUTED
         if self.use_pt_ddp:
@@ -265,19 +263,33 @@ class Trainer:
 
         if self.use_cuda:
             self.model.cuda()
-            if isinstance(self.criterion, list):
-                for criterion in self.criterion:
-                    if isinstance(criterion, nn.Module):
-                        criterion.cuda()
-            elif isinstance(self.criterion, nn.Module):
-                self.criterion.cuda()
+            for criterion in self.criterion:
+                if isinstance(criterion, nn.Module):
+                    criterion.cuda()
 
         # setup optimizer and scheduler
-        self.optimizer = self.get_optimizer(self.model, self.config)
-        self.scheduler = self.get_scheduler(self.model, self.config, self.optimizer)
+        self.optimizer = self.get_optimizer()
+        self.scheduler = self.get_scheduler()
         # With multiple optimizers, some are not used all the time. We keep
         # track of that to know whether to step the corresponding schedulers.
         self._stepped_optimizers: set[int | None] = set()
+
+        num_optimizers = len(self.optimizer)
+        if num_optimizers > 1:
+            if len(self.criterion) == 1:
+                logger.warning(
+                    "Single criterion expanded to %i copies to match the number of optimizers.", num_optimizers
+                )
+                self.criterion = [copy.deepcopy(self.criterion[0]) for _ in range(num_optimizers)]
+            if len(self.scheduler) == 1:
+                logger.warning(
+                    "Single scheduler expanded to %i copies to match the number of optimizers.", num_optimizers
+                )
+                self.scheduler = [copy.deepcopy(self.scheduler[0]) for _ in range(num_optimizers)]
+        if len(self.optimizer) != len(self.scheduler) != len(self.criterion):
+            lengths = f"{len(self.optimizer)} != {len(self.scheduler)} != {len(self.criterion)}"
+            msg = f"get_optimizer(), get_scheduler() and get_criterion must return the same number of items: {lengths}"
+            raise RuntimeError(msg)
 
         # CALLBACK
         self.callbacks = TrainerCallback()
@@ -339,9 +351,9 @@ class Trainer:
     @staticmethod
     def init_accelerate(
         model: TrainerModel,
-        optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer],
+        optimizer: list[torch.optim.Optimizer],
         training_dataloader: DataLoader[Any] | None,
-        scheduler: LRScheduler | list[LRScheduler] | dict[str, LRScheduler] | None,
+        scheduler: list[LRScheduler | None],
         *,
         grad_accum_steps: int,
         mixed_precision: bool,
@@ -366,13 +378,12 @@ class Trainer:
         if isinstance(model, nn.Module):
             model = accelerator.prepare_model(model)
 
-        optimizer = map_single_or_list(optimizer, accelerator.prepare_optimizer)
+        optimizer = [accelerator.prepare_optimizer(o) for o in optimizer]
 
         if isinstance(training_dataloader, torch.utils.data.DataLoader):
             training_dataloader = accelerator.prepare_data_loader(training_dataloader)
 
-        if scheduler is not None:
-            scheduler = map_single_or_list(scheduler, accelerator.prepare_scheduler)
+        scheduler = [accelerator.prepare_scheduler(s) if s is not None else None for s in scheduler]
 
         return model, optimizer, training_dataloader, scheduler, accelerator
 
@@ -499,14 +510,10 @@ class Trainer:
         """
 
         def _restore_list_objs(states: Any, obj: Any) -> None:
-            if isinstance(obj, list):
-                for idx, state in enumerate(states):
-                    obj[idx].load_state_dict(state)
-            elif isinstance(obj, dict):
-                for key, state in states.items():
-                    obj[key].load_state_dict(state)
-            else:
-                obj.load_state_dict(states)
+            if not isinstance(states, list):
+                states = [states]
+            for idx, state in enumerate(states):
+                obj[idx].load_state_dict(state)
 
         verb = "Continuing" if self.continue_run else "Restoring"
         logger.info(" > %s from %s ...", verb, os.path.basename(self.args.restore_path))
@@ -524,9 +531,9 @@ class Trainer:
                 if checkpoint.get("scheduler"):
                     logger.info(" > Restoring Scheduler...")
                     _restore_list_objs(checkpoint["scheduler"], self.scheduler)
-                if "scaler" in checkpoint and self.use_amp_scaler and checkpoint["scaler"]:
+                if "scaler" in checkpoint and self.use_amp_scaler and checkpoint["scaler"] and self.scaler is not None:
                     logger.info(" > Restoring Scaler...")
-                    _restore_list_objs(checkpoint["scaler"], self.scaler)
+                    self.scaler.load_state_dict(checkpoint["scaler"])
         except (KeyError, RuntimeError, ValueError):
             logger.info(" > Partial model initialization...")
             model_dict = self.model.state_dict()
@@ -548,10 +555,10 @@ class Trainer:
 
     def reset_lr(self) -> None:
         """Reset learning rate to default values."""
-        for key, optim in iter_single_or_list(self.optimizer):
+        lr = self.get_lr()
+        for idx, optim in enumerate(self.optimizer):
             for group in optim.param_groups:
-                lr = self.get_lr(self.model, self.config)
-                group["lr"] = lr[key] if key is not None else lr  # type: ignore[index]
+                group["lr"] = lr[idx]
 
     #########################
     # DATA LOADING FUNCTIONS
@@ -668,7 +675,7 @@ class Trainer:
     def _model_train_step(
         self,
         batch: dict[str, Any] | list[Any],
-        criterion: nn.Module | list[nn.Module],
+        criterion: nn.Module,
         optimizer_idx: int | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Perform a training forward step. Compute model outputs and losses.
@@ -727,17 +734,14 @@ class Trainer:
     def _compute_loss(
         self,
         batch: dict[str, Any] | list[Any],
-        criterion: nn.Module | list[nn.Module],
+        criterion: nn.Module,
         optimizer_idx: int | None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         device, dtype = self._get_autocast_args(
             mixed_precision=self.config.mixed_precision, precision=self.config.precision
         )
         with torch.autocast(device_type=device, dtype=dtype, enabled=self.config.mixed_precision):
-            if optimizer_idx is not None:
-                outputs, loss_dict = self._model_train_step(batch, criterion, optimizer_idx=optimizer_idx)
-            else:
-                outputs, loss_dict = self._model_train_step(batch, criterion)
+            outputs, loss_dict = self._model_train_step(batch, criterion, optimizer_idx)
         return outputs, loss_dict
 
     @staticmethod
@@ -778,7 +782,7 @@ class Trainer:
         batch: dict[str, Any] | list[Any],
         optimizer: torch.optim.Optimizer,
         scaler: "torch.GradScaler | None",
-        criterion: nn.Module | list[nn.Module],
+        criterion: nn.Module,
         scheduler: LRScheduler | None,
         *,
         optimizer_idx: int | None = None,
@@ -918,8 +922,8 @@ class Trainer:
 
         # log learning rates (do it before they're updated in optimize())
         lrs = {}
-        for key, optim in iter_single_or_list(self.optimizer):
-            name = f"current_lr_{key}" if key is not None else "current_lr"
+        for idx, optim in enumerate(self.optimizer):
+            name = f"current_lr_{idx}" if len(self.optimizer) > 1 else "current_lr"
             lrs[name] = optim.param_groups[0]["lr"]
         loss_dict.update(lrs)
 
@@ -946,20 +950,14 @@ class Trainer:
             if ((step + 1) % self.grad_accum_steps != 0) and (step + 1 != batch_n_steps):
                 step_optimizer = False
 
-            if not isinstance(self.optimizer, list):
-                if isinstance(self.scheduler, list):
-                    msg = "Can't use list of schedulers with a single optimizer."
-                    raise TypeError(msg) from e
-                if isinstance(self.optimizer, dict) or isinstance(self.scheduler, dict):
-                    msg = "Can only use dict of optimizers/schedulers with custom `optimize()`"
-                    raise TypeError(msg) from e
+            if len(self.optimizer) == 1:
                 # auto training with a single optimizer
                 outputs, loss_dict_new, step_time = self.optimize(
                     batch,
-                    self.optimizer,
+                    self.optimizer[0],
                     self.scaler,
-                    self.criterion,
-                    self.scheduler,
+                    self.criterion[0],
+                    self.scheduler[0],
                     step_optimizer=step_optimizer,
                     num_optimizers=1,
                 )
@@ -974,15 +972,12 @@ class Trainer:
                 for idx, optimizer in enumerate(self.optimizer):
                     # scaler = self.scaler[idx] if self.use_amp_scaler else None
                     scaler = self.scaler
-                    scheduler = None
-                    if self.scheduler is not None and isinstance(self.scheduler, list):
-                        scheduler = self.scheduler[idx]
                     optimizer_outputs, loss_dict_new, step_time = self.optimize(
                         batch,
                         optimizer,
                         scaler,
                         self.criterion[idx],
-                        scheduler,
+                        self.scheduler[idx],
                         optimizer_idx=idx,
                         step_optimizer=step_optimizer,
                         num_optimizers=len(self.optimizer),
@@ -1099,8 +1094,8 @@ class Trainer:
         self.callbacks.on_train_epoch_end(self)
 
         # scheduler step
-        if self.scheduler is not None and self.config.scheduler_after_epoch:
-            for idx, scheduler in iter_single_or_list(self.scheduler):
+        if self.config.scheduler_after_epoch:
+            for idx, scheduler in enumerate(self.scheduler):
                 if scheduler is not None and idx in self._stepped_optimizers:
                     scheduler.step()
         self._stepped_optimizers.clear()
@@ -1134,13 +1129,13 @@ class Trainer:
         with torch.inference_mode():
             loss_dict: dict[str, Any] = {}
             model = self._get_model()
-            if not isinstance(self.optimizer, list) or len(signature(model.eval_step).parameters) == 2:  # noqa: PLR2004
-                outputs, loss_dict = model.eval_step(batch, self.criterion)
+            if len(self.optimizer) == 1:
+                outputs, loss_dict = model.eval_step(batch, self.criterion[0])
                 if outputs is None:
                     return None, None
             else:
                 optimizer_outputs = []
-                for idx, _ in enumerate(self.optimizer):
+                for idx in range(len(self.optimizer)):
                     outputs_, loss_dict_new = model.eval_step(batch, self.criterion[idx], idx)
                     if outputs_ is None:
                         return None, None
@@ -1193,7 +1188,7 @@ class Trainer:
             outputs = outputs_
             loader_start_time = time.time()
         # plot epoch stats, artifacts and figures
-        if self.args.rank == 0 and outputs is not None:
+        if self.args.rank == 0 and outputs is not None and batch is not None:
             model = self._get_model()
             with suppress(NotImplementedError):
                 model.eval_log(
@@ -1452,10 +1447,7 @@ class Trainer:
     # GET FUNCTIONS
     #####################
 
-    @staticmethod
-    def get_optimizer(
-        model: TrainerModel, config: TrainerConfig
-    ) -> torch.optim.Optimizer | list[torch.optim.Optimizer]:
+    def get_optimizer(self) -> list[torch.optim.Optimizer]:
         """Return the optimizer.
 
         From the model if model implements `get_optimizer()` else
@@ -1466,26 +1458,27 @@ class Trainer:
             config (TrainerConfig): Training configuration.
 
         Returns:
-            Union[torch.optim.Optimizer, List]: A optimizer or a list of optimizers. GAN models define a list.
+            A list of one or more optimizers. GAN models define two.
         """
         try:
-            return model.get_optimizer()
+            optimizer = self.model.get_optimizer()
         except NotImplementedError as e:
-            if isinstance(config.optimizer, list):
-                optimizers = []
-                for i, optimizer_name in enumerate(config.optimizer):
-                    optimizer_params = {} if config.optimizer_params is None else config.optimizer_params[i]  # type: ignore[index]
-                    optimizers.append(get_optimizer(optimizer_name, optimizer_params, config.lr, model))  # type: ignore[arg-type]
-                return optimizers
-            if config.optimizer is None:
+            if self.config.optimizer is None:
                 msg = "No name specified in `optimizer`"
                 raise ValueError(msg) from e
-            optimizer_name = config.optimizer
-            optimizer_params = {} if config.optimizer_params is None else config.optimizer_params
-            return get_optimizer(optimizer_name, optimizer_params, config.lr, model)  # type: ignore[arg-type]
+            if isinstance(self.config.optimizer, list):
+                optimizers = []
+                for i, optimizer_name in enumerate(self.config.optimizer):
+                    optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params[i]  # type: ignore[index]
+                    optimizers.append(get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model))  # type: ignore[arg-type]
+                optimizer = optimizers
+            else:
+                optimizer_name = self.config.optimizer
+                optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params
+                optimizer = get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model)  # type: ignore[arg-type]
+        return optimizer if isinstance(optimizer, list) else [optimizer]
 
-    @staticmethod
-    def get_lr(model: TrainerModel, config: TrainerConfig) -> float | list[float] | dict[str, float]:
+    def get_lr(self) -> list[float]:
         """Set the initial learning rate.
 
         According to the model if model implements `get_lr()` else try setting
@@ -1496,19 +1489,21 @@ class Trainer:
             config (TrainerConfig): Training configuration.
 
         Returns:
-            Union[float, List[float]]: A single learning rate or a list of learning rates, one for each optimzier.
+            A list of learning rates, one for each optimzier.
         """
         try:
-            return model.get_lr()
+            lr = self.model.get_lr()
         except NotImplementedError:
-            return config.lr
+            lr = self.config.lr
+        lr_list = lr if isinstance(lr, list) else [lr]
+        if len(lr_list) == 1 and len(self.optimizer) > 1:
+            logger.warning(
+                "Single learning rate expanded to %i copies to match the number of optimizers.", len(self.optimizer)
+            )
+            lr_list = lr_list * len(self.optimizer)
+        return lr_list
 
-    @staticmethod
-    def get_scheduler(
-        model: TrainerModel,
-        config: TrainerConfig,
-        optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer],
-    ) -> LRScheduler | list[LRScheduler] | None:
+    def get_scheduler(self) -> list[LRScheduler | None]:
         """Return the scheduler.
 
         From the model if model implements `get_scheduler()` else
@@ -1519,17 +1514,17 @@ class Trainer:
             config (TrainerConfig): Training configuration.
 
         Returns:
-            Union[torch.optim.Optimizer, List, Dict]: A scheduler or a list of schedulers, one for each optimizer.
+            A list of schedulers, one for each optimizer.
         """
         try:
-            return model.get_scheduler(optimizer)
+            scheduler = self.model.get_scheduler(self.optimizer)
         except NotImplementedError:
-            lr_scheduler = config.lr_scheduler
-            lr_scheduler_params = config.lr_scheduler_params
-            return get_scheduler(lr_scheduler, lr_scheduler_params, optimizer)  # type: ignore[arg-type]
+            lr_scheduler = self.config.lr_scheduler
+            lr_scheduler_params = self.config.lr_scheduler_params
+            scheduler = get_scheduler(lr_scheduler, lr_scheduler_params, self.optimizer[0])  # type: ignore[arg-type]
+        return scheduler if isinstance(scheduler, list) else [scheduler]
 
-    @staticmethod
-    def get_criterion(model: TrainerModel) -> nn.Module | list[nn.Module]:
+    def get_criterion(self) -> list[nn.Module]:
         """Receive the criterion from the model. Model must implement `get_criterion()`.
 
         Args:
@@ -1538,7 +1533,8 @@ class Trainer:
         Returns:
             nn.Module: Criterion layer.
         """
-        return model.get_criterion()
+        criterion = self.model.get_criterion()
+        return criterion if isinstance(criterion, list) else [criterion]
 
     ####################
     # HELPER FUNCTIONS
@@ -1578,7 +1574,7 @@ class Trainer:
             raise ValueError(msg)
 
         # take the average of loss_{optimizer_idx} as the target loss when there are multiple optimizers
-        if isinstance(self.optimizer, list):
+        if len(self.optimizer) > 1:
             target_avg_loss = 0.0
             for idx in range(len(self.optimizer)):
                 if f"avg_loss_{idx}" in keep_avg_target.avg_values:

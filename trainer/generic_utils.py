@@ -1,9 +1,9 @@
 import datetime
 import os
 import subprocess
-from collections.abc import Callable, ItemsView, Iterator
+from collections.abc import ItemsView
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import fsspec
 import torch
@@ -115,26 +115,6 @@ def set_partial_state_dict(
     model_dict.update(pretrained_dict)
     logger.info(" | > %i / %i layers are restored.", len(pretrained_dict), len(model_dict))
     return model_dict
-
-
-_T = TypeVar("_T")
-_R = TypeVar("_R")
-
-
-def iter_single_or_list(obj: _T | list[_T]) -> Iterator[tuple[int | None, _T]]:
-    """Iterate over objects that can be single values or lists.
-
-    Especially used for optimizers and schedulers.
-    """
-    if isinstance(obj, list):
-        yield from enumerate(obj)
-    else:
-        yield None, obj
-
-
-def map_single_or_list(obj: _T | list[_T], fn: Callable[[_T], _R]) -> _R | list[_R]:
-    """Apply `fn` to obj or list of obj and return the same structure."""
-    return [fn(v) for v in obj] if isinstance(obj, list) else fn(obj)
 
 
 class KeepAverage:

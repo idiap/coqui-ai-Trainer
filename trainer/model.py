@@ -199,9 +199,7 @@ class TrainerModel(ABC, nn.Module):
         """
         raise NotImplementedError
 
-    def get_scheduler(
-        self, optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer]
-    ) -> LRScheduler | list[LRScheduler]:
+    def get_scheduler(self, optimizer: list[torch.optim.Optimizer]) -> LRScheduler | list[LRScheduler | None] | None:
         raise NotImplementedError
 
     def get_criterion(self) -> nn.Module | list[nn.Module]:
@@ -222,13 +220,9 @@ class TrainerModel(ABC, nn.Module):
 
     def on_train_epoch_end(self, trainer: "Trainer") -> None: ...
 
-    @staticmethod
-    def before_backward_pass(
-        loss_dict: dict[str, Any], optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer]
-    ) -> None: ...
+    def before_backward_pass(self, loss_dict: dict[str, Any], optimizer: list[torch.optim.Optimizer]) -> None: ...
 
-    @staticmethod
-    def before_gradient_clipping() -> None: ...
+    def before_gradient_clipping(self) -> None: ...
 
     def on_train_step_start(self, trainer: "Trainer") -> None: ...
 
