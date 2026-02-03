@@ -116,7 +116,6 @@ class TrainerModel(ABC, nn.Module):
         is_eval: bool = False,
         samples: list[Any] | None = None,
         verbose: bool = True,
-        num_gpus: int = 1,
     ) -> torch.utils.data.DataLoader[Any]:
         """Get data loader for the model.
 
@@ -125,7 +124,6 @@ class TrainerModel(ABC, nn.Module):
             is_eval (bool): If True, returns evaluation data loader.
             samples (Union[List[Dict], List[List]]): List of samples to be used for data loading.
             verbose (bool): If True, prints data loading information.
-            num_gpus (int): Number of GPUs used for training.
 
         Returns:
             torch.utils.data.DataLoader: Data loader for the model.

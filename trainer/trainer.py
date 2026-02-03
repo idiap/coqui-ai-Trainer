@@ -565,14 +565,12 @@ class Trainer:
         *,
         is_eval: bool,
         verbose: bool,
-        num_gpus: int,
     ) -> DataLoader[Any]:
         loader = model.get_data_loader(
             config=config,
             is_eval=is_eval,
             samples=samples,
             verbose=verbose,
-            num_gpus=num_gpus,
         )
 
         assert len(loader) > 0, (
@@ -605,7 +603,6 @@ class Trainer:
                 self.config,
                 samples,
                 verbose,
-                self.num_gpus,
             )
         except NotImplementedError:
             return self._get_loader(
@@ -614,7 +611,6 @@ class Trainer:
                 samples,
                 is_eval=False,
                 verbose=verbose,
-                num_gpus=self.num_gpus,
             )
 
     def get_eval_dataloader(self, samples: list[Any] | None, *, verbose: bool) -> DataLoader[Any]:
@@ -636,7 +632,6 @@ class Trainer:
             samples,
             is_eval=True,
             verbose=verbose,
-            num_gpus=self.num_gpus,
         )
 
     def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
