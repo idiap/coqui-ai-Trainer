@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP_th
 from torch.utils.data import DataLoader
 
-from trainer._types import Callback, LossDict, LRScheduler, ValueListDict
+from trainer._types import Callback, LossDict, LRScheduler
 from trainer.callbacks import TrainerCallback
 from trainer.config import TrainerArgs, TrainerConfig
 from trainer.generic_utils import (
@@ -29,8 +29,8 @@ from trainer.generic_utils import (
     get_git_branch,
     is_pytorch_at_least_2_3,
     is_pytorch_at_least_2_4,
-    iter_value_list_dict,
-    map_value_list_dict,
+    iter_single_or_list,
+    map_single_or_list,
     remove_experiment_folder,
     set_partial_state_dict,
     to_cuda,
@@ -339,7 +339,7 @@ class Trainer:
     @staticmethod
     def init_accelerate(
         model: TrainerModel,
-        optimizer: ValueListDict[torch.optim.Optimizer],
+        optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer],
         training_dataloader: DataLoader[Any] | None,
         scheduler: LRScheduler | list[LRScheduler] | dict[str, LRScheduler] | None,
         *,
@@ -366,13 +366,13 @@ class Trainer:
         if isinstance(model, nn.Module):
             model = accelerator.prepare_model(model)
 
-        optimizer = map_value_list_dict(optimizer, accelerator.prepare_optimizer)
+        optimizer = map_single_or_list(optimizer, accelerator.prepare_optimizer)
 
         if isinstance(training_dataloader, torch.utils.data.DataLoader):
             training_dataloader = accelerator.prepare_data_loader(training_dataloader)
 
         if scheduler is not None:
-            scheduler = map_value_list_dict(scheduler, accelerator.prepare_scheduler)
+            scheduler = map_single_or_list(scheduler, accelerator.prepare_scheduler)
 
         return model, optimizer, training_dataloader, scheduler, accelerator
 
@@ -548,7 +548,7 @@ class Trainer:
 
     def reset_lr(self) -> None:
         """Reset learning rate to default values."""
-        for key, optim in iter_value_list_dict(self.optimizer):
+        for key, optim in iter_single_or_list(self.optimizer):
             for group in optim.param_groups:
                 lr = self.get_lr(self.model, self.config)
                 group["lr"] = lr[key] if key is not None else lr  # type: ignore[index]
@@ -918,7 +918,7 @@ class Trainer:
 
         # log learning rates (do it before they're updated in optimize())
         lrs = {}
-        for key, optim in iter_value_list_dict(self.optimizer):
+        for key, optim in iter_single_or_list(self.optimizer):
             name = f"current_lr_{key}" if key is not None else "current_lr"
             lrs[name] = optim.param_groups[0]["lr"]
         loss_dict.update(lrs)
@@ -1017,8 +1017,8 @@ class Trainer:
 
             # update avg loss stats
             update_eval_values = {}
-            for key, value in loss_dict.items():
-                update_eval_values["avg_" + key] = value
+            for k, value in loss_dict.items():
+                update_eval_values["avg_" + k] = value
             self.keep_avg_train.update_values(update_eval_values)
 
         # print training progress
@@ -1101,7 +1101,7 @@ class Trainer:
 
         # scheduler step
         if self.scheduler is not None and self.config.scheduler_after_epoch:
-            for idx, scheduler in iter_value_list_dict(self.scheduler):
+            for idx, scheduler in iter_single_or_list(self.scheduler):
                 if scheduler is not None and idx in self._stepped_optimizers:
                     scheduler.step()
         self._stepped_optimizers.clear()
@@ -1454,7 +1454,9 @@ class Trainer:
     #####################
 
     @staticmethod
-    def get_optimizer(model: TrainerModel, config: TrainerConfig) -> ValueListDict[torch.optim.Optimizer]:
+    def get_optimizer(
+        model: TrainerModel, config: TrainerConfig
+    ) -> torch.optim.Optimizer | list[torch.optim.Optimizer]:
         """Return the optimizer.
 
         From the model if model implements `get_optimizer()` else
@@ -1506,8 +1508,8 @@ class Trainer:
     def get_scheduler(
         model: TrainerModel,
         config: TrainerConfig,
-        optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer] | dict[str, torch.optim.Optimizer],
-    ) -> ValueListDict[LRScheduler] | None:
+        optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer],
+    ) -> LRScheduler | list[LRScheduler] | None:
         """Return the scheduler.
 
         From the model if model implements `get_scheduler()` else

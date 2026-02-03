@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 import torch
 
@@ -9,10 +9,6 @@ if TYPE_CHECKING:
     import plotly
 
     from trainer.trainer import Trainer
-
-_T = TypeVar("_T")
-
-ValueListDict: TypeAlias = _T | list[_T] | dict[str, _T]
 
 Audio: TypeAlias = "npt.NDArray[Any]"
 Figure: TypeAlias = "matplotlib.figure.Figure | plotly.graph_objects.Figure"

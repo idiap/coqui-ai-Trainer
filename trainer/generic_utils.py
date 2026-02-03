@@ -9,7 +9,6 @@ import fsspec
 import torch
 from packaging.version import Version
 
-from trainer._types import _T, ValueListDict
 from trainer.config import TrainerConfig
 from trainer.logger import logger
 
@@ -118,29 +117,24 @@ def set_partial_state_dict(
     return model_dict
 
 
-def iter_value_list_dict(obj: ValueListDict[_T]) -> Iterator[tuple[int | str | None, _T]]:
-    """Iterate over objects that can be single values, lists or dicts.
+_T = TypeVar("_T")
+_R = TypeVar("_R")
+
+
+def iter_single_or_list(obj: _T | list[_T]) -> Iterator[tuple[int | None, _T]]:
+    """Iterate over objects that can be single values or lists.
 
     Especially used for optimizers and schedulers.
     """
     if isinstance(obj, list):
         yield from enumerate(obj)
-    elif isinstance(obj, dict):
-        yield from obj.items()
     else:
         yield None, obj
 
 
-_R = TypeVar("_R")
-
-
-def map_value_list_dict(obj: ValueListDict[_T], fn: Callable[[_T], _R]) -> ValueListDict[_R]:
-    """Apply `fn` to obj, list of obj, or dict of obj and return the same structure."""
-    if isinstance(obj, list):
-        return [fn(v) for v in obj]
-    if isinstance(obj, dict):
-        return {k: fn(v) for k, v in obj.items()}
-    return fn(obj)
+def map_single_or_list(obj: _T | list[_T], fn: Callable[[_T], _R]) -> _R | list[_R]:
+    """Apply `fn` to obj or list of obj and return the same structure."""
+    return [fn(v) for v in obj] if isinstance(obj, list) else fn(obj)
 
 
 class KeepAverage:

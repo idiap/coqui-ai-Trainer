@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import nn
 
-from trainer._types import ValueListDict
 from trainer.config import TrainerConfig
 from trainer.logging import BaseDashboardLogger
 
@@ -191,9 +190,7 @@ class TrainerModel(ABC, nn.Module):
         """
         raise NotImplementedError
 
-    def get_scheduler(
-        self, optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer] | dict[str, torch.optim.Optimizer]
-    ):
+    def get_scheduler(self, optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer]):
         raise NotImplementedError
 
     def get_criterion(self) -> nn.Module | list[nn.Module]:
@@ -215,7 +212,9 @@ class TrainerModel(ABC, nn.Module):
     def on_train_epoch_end(self, trainer: "Trainer") -> None: ...
 
     @staticmethod
-    def before_backward_pass(loss_dict: dict[str, Any], optimizer: ValueListDict[torch.optim.Optimizer]) -> None: ...
+    def before_backward_pass(
+        loss_dict: dict[str, Any], optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer]
+    ) -> None: ...
 
     @staticmethod
     def before_gradient_clipping() -> None: ...
