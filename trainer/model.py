@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import nn
 
+from trainer._types import LRScheduler
 from trainer.config import TrainerConfig
 from trainer.logging import BaseDashboardLogger
 
@@ -190,7 +191,9 @@ class TrainerModel(ABC, nn.Module):
         """
         raise NotImplementedError
 
-    def get_scheduler(self, optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer]):
+    def get_scheduler(
+        self, optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer]
+    ) -> LRScheduler | list[LRScheduler]:
         raise NotImplementedError
 
     def get_criterion(self) -> nn.Module | list[nn.Module]:

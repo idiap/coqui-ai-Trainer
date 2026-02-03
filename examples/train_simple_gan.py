@@ -102,7 +102,7 @@ class GANModel(TrainerModel):
         loss_disc = (loss_real + loss_fake) / 2
 
         # step dicriminator
-        self.scaled_backward(loss_disc, None, trainer)
+        self.scaled_backward(loss_disc, trainer)
 
         if trainer.total_steps_done % trainer.grad_accum_steps == 0:
             trainer.optimizer[0].step()
@@ -118,7 +118,7 @@ class GANModel(TrainerModel):
         loss_gen = trainer.criterion(logits, valid)
 
         # step generator
-        self.scaled_backward(loss_gen, None, trainer)
+        self.scaled_backward(loss_gen, trainer)
         if trainer.total_steps_done % trainer.grad_accum_steps == 0:
             trainer.optimizer[1].step()
             trainer.optimizer[1].zero_grad()
@@ -159,7 +159,7 @@ class GANModel(TrainerModel):
 if __name__ == "__main__":
     config = GANModelConfig()
     config.batch_size = 64
-    config.grad_clip = None
+    config.grad_clip = 0
 
     model = GANModel()
     trainer = Trainer(TrainerArgs(), config, model=model, output_path=Path.cwd(), gpu=0 if is_cuda else None)
