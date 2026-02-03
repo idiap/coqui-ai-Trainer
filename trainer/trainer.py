@@ -111,7 +111,7 @@ class Trainer:
                 initializes a model from the provided config. Defaults to None.
 
             train_samples (List):
-                A list of training samples used by the model's `get_train_data_loader` to init the `dataset` and the
+                A list of training samples used by the model's training dataloader to init the `dataset` and the
                 `data_loader`. Defaults to None.
 
             eval_samples (List):
@@ -586,9 +586,6 @@ class Trainer:
     def get_train_dataloader(self, samples: list[Any] | None, *, verbose: bool = True) -> DataLoader[Any]:
         """Initialize and return a training data loader.
 
-        Call ```model.get_train_data_loader``` if it is implemented, else call ```model.get_data_loader```
-        and set ```is_eval=False```.
-
         Args:
             ap (AudioProcessor): Audio processor.
             samples (List): Data samples used for training.
@@ -597,23 +594,15 @@ class Trainer:
         Returns:
             DataLoader: Initialized training data loader.
         """
-        model = self._get_model()
-        try:
-            return model.get_train_data_loader(
-                self.config,
-                samples,
-                verbose,
-            )
-        except NotImplementedError:
-            return self._get_loader(
-                model,
-                self.config,
-                samples,
-                is_eval=False,
-                verbose=verbose,
-            )
+        return self._get_loader(
+            self._get_model(),
+            self.config,
+            samples,
+            is_eval=False,
+            verbose=verbose,
+        )
 
-    def get_eval_dataloader(self, samples: list[Any] | None, *, verbose: bool) -> DataLoader[Any]:
+    def get_eval_dataloader(self, samples: list[Any] | None, *, verbose: bool = True) -> DataLoader[Any]:
         """Initialize and return a evaluation data loader.
 
         Call ```model.get_data_loader``` and set ```is_eval=True```.

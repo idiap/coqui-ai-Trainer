@@ -132,9 +132,6 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `get_data_loader()` is not implemented."
         raise NotImplementedError(msg)
 
-    def get_train_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
-        raise NotImplementedError
-
     def test_run(self, trainer: "Trainer") -> dict[str, Any]:
         raise NotImplementedError
 
