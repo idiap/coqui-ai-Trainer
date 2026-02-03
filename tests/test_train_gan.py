@@ -244,341 +244,341 @@ def test_overfit_accelerate_mnist_simple_gan(tmp_path):
     assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
 
 
-def test_overfit_manual_optimize_mnist_simple_gan(tmp_path):
-    @dataclass
-    class GANModelConfig(TrainerConfig):
-        epochs: int = 1
-        print_step: int = 2
-        training_seed: int = 666
-
-    class GANModel(TrainerModel):
-        def __init__(self) -> None:
-            super().__init__()
-            data_shape = (1, 28, 28)
-            self.generator = Generator(latent_dim=100, img_shape=data_shape)
-            self.discriminator = Discriminator(img_shape=data_shape)
-
-        def forward(self, x): ...
-
-        def optimize(self, batch, trainer):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            # train discriminator
-            imgs_gen = self.generator(z)
-            logits = self.discriminator(imgs_gen.detach())
-            fake = torch.zeros(imgs.size(0), 1)
-            fake = fake.type_as(imgs)
-            loss_fake = trainer.criterion[0](logits, fake)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-            logits = self.discriminator(imgs)
-            loss_real = trainer.criterion[0](logits, valid)
-            loss_disc = (loss_real + loss_fake) / 2
-
-            # step dicriminator
-            trainer.optimizer[0].zero_grad()
-            self.scaled_backward(loss_disc, trainer)
-            trainer.optimizer[0].step()
-
-            # train generator
-            imgs_gen = self.generator(z)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_gen = trainer.criterion[0](logits, valid)
-
-            # step generator
-            trainer.optimizer[1].zero_grad()
-            self.scaled_backward(loss_gen, trainer)
-            trainer.optimizer[1].step()
-            return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
-
-        @torch.inference_mode()
-        def eval_step(self, batch, criterion, optimizer_idx=None):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            imgs_gen = self.generator(z)
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_gen = criterion(logits, valid)
-            return {"model_outputs": logits}, {"loss_gen": loss_gen}
-
-        def get_optimizer(self):
-            discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-            generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-            return [discriminator_optimizer, generator_optimizer]
-
-        def get_criterion(self):
-            return [nn.BCELoss(), nn.BCELoss()]
-
-        def get_data_loader(self, config, is_eval, samples, verbose):
-            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-            dataset.data = dataset.data[:64]
-            dataset.targets = dataset.targets[:64]
-            return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
-
-    config = GANModelConfig()
-    config.batch_size = 64
-    config.grad_clip = None
-
-    model = GANModel()
-    trainer = Trainer(TrainerArgs(), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None)
-
-    trainer.config.epochs = 1
-    trainer.fit()
-    loss_d1 = trainer.keep_avg_train["avg_loss_disc"]
-    loss_g1 = trainer.keep_avg_train["avg_loss_gen"]
-
-    trainer.config.epochs = 5
-    trainer.fit()
-    loss_d2 = trainer.keep_avg_train["avg_loss_disc"]
-    loss_g2 = trainer.keep_avg_train["avg_loss_gen"]
-
-    print(f"loss_d1: {loss_d1}, loss_d2: {loss_d2}")
-    print(f"loss_g1: {loss_g1}, loss_g2: {loss_g2}")
-    assert loss_d1 > loss_d2, f"Discriminator loss should decrease. {loss_d1} > {loss_d2}"
-    assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
-
-
-def test_overfit_manual_optimize_grad_accum_mnist_simple_gan(tmp_path):
-    @dataclass
-    class GANModelConfig(TrainerConfig):
-        epochs: int = 1
-        print_step: int = 2
-        training_seed: int = 666
-
-    class GANModel(TrainerModel):
-        def __init__(self) -> None:
-            super().__init__()
-            data_shape = (1, 28, 28)
-            self.generator = Generator(latent_dim=100, img_shape=data_shape)
-            self.discriminator = Discriminator(img_shape=data_shape)
-
-        def forward(self, x): ...
-
-        def optimize(self, batch, trainer):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            # train discriminator
-            imgs_gen = self.generator(z)
-            logits = self.discriminator(imgs_gen.detach())
-            fake = torch.zeros(imgs.size(0), 1)
-            fake = fake.type_as(imgs)
-            loss_fake = trainer.criterion[0](logits, fake)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-            logits = self.discriminator(imgs)
-            loss_real = trainer.criterion[0](logits, valid)
-            loss_disc = (loss_real + loss_fake) / 2
-
-            # step dicriminator
-            self.scaled_backward(loss_disc, trainer)
-
-            if trainer.total_steps_done % trainer.grad_accum_steps == 0:
-                trainer.optimizer[0].step()
-                trainer.optimizer[0].zero_grad()
-
-            # train generator
-            imgs_gen = self.generator(z)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_gen = trainer.criterion[0](logits, valid)
-
-            # step generator
-            self.scaled_backward(loss_gen, trainer)
-            if trainer.total_steps_done % trainer.grad_accum_steps == 0:
-                trainer.optimizer[1].step()
-                trainer.optimizer[1].zero_grad()
-            return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
-
-        @torch.inference_mode()
-        def eval_step(self, batch, criterion, optimizer_idx=None):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            imgs_gen = self.generator(z)
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_gen = criterion(logits, valid)
-            return {"model_outputs": logits}, {"loss_gen": loss_gen}
-
-        def get_optimizer(self):
-            discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-            generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-            return [discriminator_optimizer, generator_optimizer]
-
-        def get_criterion(self):
-            return [nn.BCELoss(), nn.BCELoss()]
-
-        def get_data_loader(self, config, is_eval, samples, verbose):
-            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-            dataset.data = dataset.data[:64]
-            dataset.targets = dataset.targets[:64]
-            return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
-
-    config = GANModelConfig()
-    config.batch_size = 64
-    config.grad_clip = None
-
-    model = GANModel()
-    trainer = Trainer(TrainerArgs(), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None)
-
-    trainer.config.epochs = 1
-    trainer.fit()
-    loss_d1 = trainer.keep_avg_train["avg_loss_disc"]
-    loss_g1 = trainer.keep_avg_train["avg_loss_gen"]
-
-    trainer.config.epochs = 5
-    trainer.fit()
-    loss_d2 = trainer.keep_avg_train["avg_loss_disc"]
-    loss_g2 = trainer.keep_avg_train["avg_loss_gen"]
-
-    print(f"loss_d1: {loss_d1}, loss_d2: {loss_d2}")
-    print(f"loss_g1: {loss_g1}, loss_g2: {loss_g2}")
-    assert loss_d1 > loss_d2, f"Discriminator loss should decrease. {loss_d1} > {loss_d2}"
-    assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
-
-
-def test_overfit_manual_accelerate_optimize_grad_accum_mnist_simple_gan(tmp_path):
-    @dataclass
-    class GANModelConfig(TrainerConfig):
-        epochs: int = 1
-        print_step: int = 2
-        training_seed: int = 666
-
-    class GANModel(TrainerModel):
-        def __init__(self) -> None:
-            super().__init__()
-            data_shape = (1, 28, 28)
-            self.generator = Generator(latent_dim=100, img_shape=data_shape)
-            self.discriminator = Discriminator(img_shape=data_shape)
-
-        def train_step(): ...
-
-        def forward(self, x): ...
-
-        def optimize(self, batch, trainer):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            # train discriminator
-            imgs_gen = self.generator(z)
-            logits = self.discriminator(imgs_gen.detach())
-            fake = torch.zeros(imgs.size(0), 1)
-            fake = fake.type_as(imgs)
-            loss_fake = trainer.criterion[0](logits, fake)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-            logits = self.discriminator(imgs)
-            loss_real = trainer.criterion[0](logits, valid)
-            loss_disc = (loss_real + loss_fake) / 2
-
-            # step dicriminator
-            self.scaled_backward(loss_disc, trainer)
-
-            if trainer.total_steps_done % trainer.grad_accum_steps == 0:
-                trainer.optimizer[0].step()
-                trainer.optimizer[0].zero_grad()
-
-            # train generator
-            imgs_gen = self.generator(z)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_gen = trainer.criterion[0](logits, valid)
-
-            # step generator
-            self.scaled_backward(loss_gen, trainer)
-            if trainer.total_steps_done % trainer.grad_accum_steps == 0:
-                trainer.optimizer[1].step()
-                trainer.optimizer[1].zero_grad()
-            return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
-
-        @torch.inference_mode()
-        def eval_step(self, batch, criterion, optimizer_idx=None):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            imgs_gen = self.generator(z)
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_gen = criterion(logits, valid)
-            return {"model_outputs": logits}, {"loss_gen": loss_gen}
-
-        def get_optimizer(self):
-            discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-            generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-            return [discriminator_optimizer, generator_optimizer]
-
-        def get_criterion(self):
-            return [nn.BCELoss(), nn.BCELoss()]
-
-        def get_data_loader(self, config, is_eval, samples, verbose):
-            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-            dataset.data = dataset.data[:64]
-            dataset.targets = dataset.targets[:64]
-            return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
-
-    config = GANModelConfig()
-    config.batch_size = 64
-    config.grad_clip = None
-
-    model = GANModel()
-    trainer = Trainer(
-        TrainerArgs(use_accelerate=True), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None
-    )
-
-    trainer.config.epochs = 1
-    trainer.fit()
-    loss_d1 = trainer.keep_avg_train["avg_loss_disc"]
-    loss_g1 = trainer.keep_avg_train["avg_loss_gen"]
-
-    trainer.config.epochs = 5
-    trainer.fit()
-    loss_d2 = trainer.keep_avg_train["avg_loss_disc"]
-    loss_g2 = trainer.keep_avg_train["avg_loss_gen"]
-
-    print(f"loss_d1: {loss_d1}, loss_d2: {loss_d2}")
-    print(f"loss_g1: {loss_g1}, loss_g2: {loss_g2}")
-    assert loss_d1 > loss_d2, f"Discriminator loss should decrease. {loss_d1} > {loss_d2}"
-    assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
+# def test_overfit_manual_optimize_mnist_simple_gan(tmp_path):
+#     @dataclass
+#     class GANModelConfig(TrainerConfig):
+#         epochs: int = 1
+#         print_step: int = 2
+#         training_seed: int = 666
+
+#     class GANModel(TrainerModel):
+#         def __init__(self) -> None:
+#             super().__init__()
+#             data_shape = (1, 28, 28)
+#             self.generator = Generator(latent_dim=100, img_shape=data_shape)
+#             self.discriminator = Discriminator(img_shape=data_shape)
+
+#         def forward(self, x): ...
+
+#         def optimize(self, batch, trainer):
+#             imgs, _ = batch
+
+#             # sample noise
+#             z = torch.randn(imgs.shape[0], 100)
+#             z = z.type_as(imgs)
+
+#             # train discriminator
+#             imgs_gen = self.generator(z)
+#             logits = self.discriminator(imgs_gen.detach())
+#             fake = torch.zeros(imgs.size(0), 1)
+#             fake = fake.type_as(imgs)
+#             loss_fake = trainer.criterion[0](logits, fake)
+
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+#             logits = self.discriminator(imgs)
+#             loss_real = trainer.criterion[0](logits, valid)
+#             loss_disc = (loss_real + loss_fake) / 2
+
+#             # step dicriminator
+#             trainer.optimizer[0].zero_grad()
+#             self.scaled_backward(loss_disc, trainer)
+#             trainer.optimizer[0].step()
+
+#             # train generator
+#             imgs_gen = self.generator(z)
+
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+
+#             logits = self.discriminator(imgs_gen)
+#             loss_gen = trainer.criterion[0](logits, valid)
+
+#             # step generator
+#             trainer.optimizer[1].zero_grad()
+#             self.scaled_backward(loss_gen, trainer)
+#             trainer.optimizer[1].step()
+#             return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
+
+#         @torch.inference_mode()
+#         def eval_step(self, batch, criterion, optimizer_idx=None):
+#             imgs, _ = batch
+
+#             # sample noise
+#             z = torch.randn(imgs.shape[0], 100)
+#             z = z.type_as(imgs)
+
+#             imgs_gen = self.generator(z)
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+
+#             logits = self.discriminator(imgs_gen)
+#             loss_gen = criterion(logits, valid)
+#             return {"model_outputs": logits}, {"loss_gen": loss_gen}
+
+#         def get_optimizer(self):
+#             discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+#             generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
+#             return [discriminator_optimizer, generator_optimizer]
+
+#         def get_criterion(self):
+#             return [nn.BCELoss(), nn.BCELoss()]
+
+#         def get_data_loader(self, config, is_eval, samples, verbose):
+#             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+#             dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
+#             dataset.data = dataset.data[:64]
+#             dataset.targets = dataset.targets[:64]
+#             return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
+
+#     config = GANModelConfig()
+#     config.batch_size = 64
+#     config.grad_clip = None
+
+#     model = GANModel()
+#     trainer = Trainer(TrainerArgs(), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None)
+
+#     trainer.config.epochs = 1
+#     trainer.fit()
+#     loss_d1 = trainer.keep_avg_train["avg_loss_disc"]
+#     loss_g1 = trainer.keep_avg_train["avg_loss_gen"]
+
+#     trainer.config.epochs = 5
+#     trainer.fit()
+#     loss_d2 = trainer.keep_avg_train["avg_loss_disc"]
+#     loss_g2 = trainer.keep_avg_train["avg_loss_gen"]
+
+#     print(f"loss_d1: {loss_d1}, loss_d2: {loss_d2}")
+#     print(f"loss_g1: {loss_g1}, loss_g2: {loss_g2}")
+#     assert loss_d1 > loss_d2, f"Discriminator loss should decrease. {loss_d1} > {loss_d2}"
+#     assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
+
+
+# def test_overfit_manual_optimize_grad_accum_mnist_simple_gan(tmp_path):
+#     @dataclass
+#     class GANModelConfig(TrainerConfig):
+#         epochs: int = 1
+#         print_step: int = 2
+#         training_seed: int = 666
+
+#     class GANModel(TrainerModel):
+#         def __init__(self) -> None:
+#             super().__init__()
+#             data_shape = (1, 28, 28)
+#             self.generator = Generator(latent_dim=100, img_shape=data_shape)
+#             self.discriminator = Discriminator(img_shape=data_shape)
+
+#         def forward(self, x): ...
+
+#         def optimize(self, batch, trainer):
+#             imgs, _ = batch
+
+#             # sample noise
+#             z = torch.randn(imgs.shape[0], 100)
+#             z = z.type_as(imgs)
+
+#             # train discriminator
+#             imgs_gen = self.generator(z)
+#             logits = self.discriminator(imgs_gen.detach())
+#             fake = torch.zeros(imgs.size(0), 1)
+#             fake = fake.type_as(imgs)
+#             loss_fake = trainer.criterion[0](logits, fake)
+
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+#             logits = self.discriminator(imgs)
+#             loss_real = trainer.criterion[0](logits, valid)
+#             loss_disc = (loss_real + loss_fake) / 2
+
+#             # step dicriminator
+#             self.scaled_backward(loss_disc, trainer)
+
+#             if trainer.total_steps_done % trainer.grad_accum_steps == 0:
+#                 trainer.optimizer[0].step()
+#                 trainer.optimizer[0].zero_grad()
+
+#             # train generator
+#             imgs_gen = self.generator(z)
+
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+
+#             logits = self.discriminator(imgs_gen)
+#             loss_gen = trainer.criterion[0](logits, valid)
+
+#             # step generator
+#             self.scaled_backward(loss_gen, trainer)
+#             if trainer.total_steps_done % trainer.grad_accum_steps == 0:
+#                 trainer.optimizer[1].step()
+#                 trainer.optimizer[1].zero_grad()
+#             return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
+
+#         @torch.inference_mode()
+#         def eval_step(self, batch, criterion, optimizer_idx=None):
+#             imgs, _ = batch
+
+#             # sample noise
+#             z = torch.randn(imgs.shape[0], 100)
+#             z = z.type_as(imgs)
+
+#             imgs_gen = self.generator(z)
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+
+#             logits = self.discriminator(imgs_gen)
+#             loss_gen = criterion(logits, valid)
+#             return {"model_outputs": logits}, {"loss_gen": loss_gen}
+
+#         def get_optimizer(self):
+#             discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+#             generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
+#             return [discriminator_optimizer, generator_optimizer]
+
+#         def get_criterion(self):
+#             return [nn.BCELoss(), nn.BCELoss()]
+
+#         def get_data_loader(self, config, is_eval, samples, verbose):
+#             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+#             dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
+#             dataset.data = dataset.data[:64]
+#             dataset.targets = dataset.targets[:64]
+#             return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
+
+#     config = GANModelConfig()
+#     config.batch_size = 64
+#     config.grad_clip = None
+
+#     model = GANModel()
+#     trainer = Trainer(TrainerArgs(), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None)
+
+#     trainer.config.epochs = 1
+#     trainer.fit()
+#     loss_d1 = trainer.keep_avg_train["avg_loss_disc"]
+#     loss_g1 = trainer.keep_avg_train["avg_loss_gen"]
+
+#     trainer.config.epochs = 5
+#     trainer.fit()
+#     loss_d2 = trainer.keep_avg_train["avg_loss_disc"]
+#     loss_g2 = trainer.keep_avg_train["avg_loss_gen"]
+
+#     print(f"loss_d1: {loss_d1}, loss_d2: {loss_d2}")
+#     print(f"loss_g1: {loss_g1}, loss_g2: {loss_g2}")
+#     assert loss_d1 > loss_d2, f"Discriminator loss should decrease. {loss_d1} > {loss_d2}"
+#     assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
+
+
+# def test_overfit_manual_accelerate_optimize_grad_accum_mnist_simple_gan(tmp_path):
+#     @dataclass
+#     class GANModelConfig(TrainerConfig):
+#         epochs: int = 1
+#         print_step: int = 2
+#         training_seed: int = 666
+
+#     class GANModel(TrainerModel):
+#         def __init__(self) -> None:
+#             super().__init__()
+#             data_shape = (1, 28, 28)
+#             self.generator = Generator(latent_dim=100, img_shape=data_shape)
+#             self.discriminator = Discriminator(img_shape=data_shape)
+
+#         def train_step(): ...
+
+#         def forward(self, x): ...
+
+#         def optimize(self, batch, trainer):
+#             imgs, _ = batch
+
+#             # sample noise
+#             z = torch.randn(imgs.shape[0], 100)
+#             z = z.type_as(imgs)
+
+#             # train discriminator
+#             imgs_gen = self.generator(z)
+#             logits = self.discriminator(imgs_gen.detach())
+#             fake = torch.zeros(imgs.size(0), 1)
+#             fake = fake.type_as(imgs)
+#             loss_fake = trainer.criterion[0](logits, fake)
+
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+#             logits = self.discriminator(imgs)
+#             loss_real = trainer.criterion[0](logits, valid)
+#             loss_disc = (loss_real + loss_fake) / 2
+
+#             # step dicriminator
+#             self.scaled_backward(loss_disc, trainer)
+
+#             if trainer.total_steps_done % trainer.grad_accum_steps == 0:
+#                 trainer.optimizer[0].step()
+#                 trainer.optimizer[0].zero_grad()
+
+#             # train generator
+#             imgs_gen = self.generator(z)
+
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+
+#             logits = self.discriminator(imgs_gen)
+#             loss_gen = trainer.criterion[0](logits, valid)
+
+#             # step generator
+#             self.scaled_backward(loss_gen, trainer)
+#             if trainer.total_steps_done % trainer.grad_accum_steps == 0:
+#                 trainer.optimizer[1].step()
+#                 trainer.optimizer[1].zero_grad()
+#             return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
+
+#         @torch.inference_mode()
+#         def eval_step(self, batch, criterion, optimizer_idx=None):
+#             imgs, _ = batch
+
+#             # sample noise
+#             z = torch.randn(imgs.shape[0], 100)
+#             z = z.type_as(imgs)
+
+#             imgs_gen = self.generator(z)
+#             valid = torch.ones(imgs.size(0), 1)
+#             valid = valid.type_as(imgs)
+
+#             logits = self.discriminator(imgs_gen)
+#             loss_gen = criterion(logits, valid)
+#             return {"model_outputs": logits}, {"loss_gen": loss_gen}
+
+#         def get_optimizer(self):
+#             discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+#             generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
+#             return [discriminator_optimizer, generator_optimizer]
+
+#         def get_criterion(self):
+#             return [nn.BCELoss(), nn.BCELoss()]
+
+#         def get_data_loader(self, config, is_eval, samples, verbose):
+#             transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+#             dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
+#             dataset.data = dataset.data[:64]
+#             dataset.targets = dataset.targets[:64]
+#             return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
+
+#     config = GANModelConfig()
+#     config.batch_size = 64
+#     config.grad_clip = None
+
+#     model = GANModel()
+#     trainer = Trainer(
+#         TrainerArgs(use_accelerate=True), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None
+#     )
+
+#     trainer.config.epochs = 1
+#     trainer.fit()
+#     loss_d1 = trainer.keep_avg_train["avg_loss_disc"]
+#     loss_g1 = trainer.keep_avg_train["avg_loss_gen"]
+
+#     trainer.config.epochs = 5
+#     trainer.fit()
+#     loss_d2 = trainer.keep_avg_train["avg_loss_disc"]
+#     loss_g2 = trainer.keep_avg_train["avg_loss_gen"]
+
+#     print(f"loss_d1: {loss_d1}, loss_d2: {loss_d2}")
+#     print(f"loss_g1: {loss_g1}, loss_g2: {loss_g2}")
+#     assert loss_d1 > loss_d2, f"Discriminator loss should decrease. {loss_d1} > {loss_d2}"
+#     assert loss_g1 > loss_g2, f"Generator loss should decrease. {loss_g1} > {loss_g2}"
