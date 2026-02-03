@@ -53,7 +53,9 @@ class TrainerModel(ABC, nn.Module):
         """
         return batch
 
-    def train_step(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    def train_step(
+        self, batch: dict[str, Any] | list[Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Perform a single training step. Run the model forward ... and compute losses.
 
         Args:
@@ -67,7 +69,9 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `train_step()` is not implemented."
         raise NotImplementedError(msg)
 
-    def train_log(self, *args: Any, **kwargs: Any) -> None:
+    def train_log(
+        self, batch: dict[str, Any] | list[Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int
+    ) -> None:
         """Create visualizations and waveform examples for training.
 
         For example, here you can plot spectrograms and generate sample sample waveforms from these spectrograms to
@@ -86,7 +90,9 @@ class TrainerModel(ABC, nn.Module):
         raise NotImplementedError(msg)
 
     @torch.inference_mode()
-    def eval_step(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    def eval_step(
+        self, batch: dict[str, Any] | list[Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Perform a single evaluation step.
 
         Run the model forward ... and compute losses. In most cases, you can
@@ -103,7 +109,9 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `eval_step()` is not implemented."
         raise NotImplementedError(msg)
 
-    def eval_log(self, *args: Any, **kwargs: Any) -> None:
+    def eval_log(
+        self, batch: dict[str, Any] | list[Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int
+    ) -> None:
         """The same as `train_log()`."""
         msg = " [!] `eval_log()` is not implemented."
         raise NotImplementedError(msg)

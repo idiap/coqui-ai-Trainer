@@ -252,7 +252,7 @@ class Trainer:
         # setup criterion
         self.criterion = self.get_criterion(self.model)
 
-        # DISTRUBUTED
+        # DISTRIBUTED
         if self.use_pt_ddp:
             rank_zero_logger_info(" > Using PyTorch DDP", logger)
             init_distributed(
@@ -972,7 +972,6 @@ class Trainer:
                 outputs_per_optimizer = []
                 total_step_time = 0.0
                 for idx, optimizer in enumerate(self.optimizer):
-                    criterion = self.criterion
                     # scaler = self.scaler[idx] if self.use_amp_scaler else None
                     scaler = self.scaler
                     scheduler = None
@@ -982,7 +981,7 @@ class Trainer:
                         batch,
                         optimizer,
                         scaler,
-                        criterion,
+                        self.criterion[idx],
                         scheduler,
                         optimizer_idx=idx,
                         step_optimizer=step_optimizer,
@@ -1142,7 +1141,7 @@ class Trainer:
             else:
                 optimizer_outputs = []
                 for idx, _ in enumerate(self.optimizer):
-                    outputs_, loss_dict_new = model.eval_step(batch, self.criterion, idx)
+                    outputs_, loss_dict_new = model.eval_step(batch, self.criterion[idx], idx)
                     if outputs_ is None:
                         return None, None
                     optimizer_outputs.append(outputs_)
