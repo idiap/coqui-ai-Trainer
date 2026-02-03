@@ -148,7 +148,7 @@ class GANModel(TrainerModel):
     def get_criterion(self):
         return nn.BCELoss()
 
-    def get_data_loader(self, config, is_eval, samples, verbose, num_gpus, rank=0):
+    def get_data_loader(self, config, is_eval, samples, verbose, num_gpus):
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
         dataset.data = dataset.data[:64]

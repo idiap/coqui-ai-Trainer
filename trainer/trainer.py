@@ -573,7 +573,6 @@ class Trainer:
             samples=samples,
             verbose=verbose,
             num_gpus=num_gpus,
-            rank=self.args.rank,
         )
 
         assert len(loader) > 0, (
@@ -607,7 +606,6 @@ class Trainer:
                 samples,
                 verbose,
                 self.num_gpus,
-                self.args.rank,
             )
         except NotImplementedError:
             return self._get_loader(
