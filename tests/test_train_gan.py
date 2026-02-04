@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -60,77 +61,95 @@ class Discriminator(nn.Module):
         return self.model(img_flat)
 
 
-def test_overfit_mnist_simple_gan(tmp_path):
-    @dataclass
-    class GANModelConfig(TrainerConfig):
-        epochs: int = 1
-        print_step: int = 2
-        training_seed: int = 666
+@dataclass
+class GANModelConfig(TrainerConfig):
+    epochs: int = 1
+    print_step: int = 2
+    training_seed: int = 666
 
-    class GANModel(TrainerModel):
-        def __init__(self) -> None:
-            super().__init__()
-            data_shape = (1, 28, 28)
-            self.generator = Generator(latent_dim=100, img_shape=data_shape)
-            self.discriminator = Discriminator(img_shape=data_shape)
 
-        def forward(self, x): ...
+def _collate_fn(batch):
+    x, y = zip(*batch, strict=True)
+    return {"input": torch.stack(x), "target": torch.tensor(y)}
 
-        def train_step(self, batch, criterion, optimizer_idx):
-            imgs, _ = batch
 
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
+class GANModel(TrainerModel):
+    def __init__(self) -> None:
+        super().__init__()
+        data_shape = (1, 28, 28)
+        self.generator = Generator(latent_dim=100, img_shape=data_shape)
+        self.discriminator = Discriminator(img_shape=data_shape)
 
-            # train discriminator
-            if optimizer_idx == 0:
-                imgs_gen = self.generator(z)
-                logits = self.discriminator(imgs_gen.detach())
-                fake = torch.zeros(imgs.size(0), 1)
-                fake = fake.type_as(imgs)
-                loss_fake = criterion(logits, fake)
+    def forward(self, x): ...
 
-                valid = torch.ones(imgs.size(0), 1)
-                valid = valid.type_as(imgs)
-                logits = self.discriminator(imgs)
-                loss_real = loss = criterion(logits, valid)
-                loss = (loss_real + loss_fake) / 2
-                return {"model_outputs": logits}, {"loss": loss}
+    def train_step(
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        imgs = batch["input"]
 
-            # train generator
-            assert optimizer_idx == 1
+        # sample noise
+        z = torch.randn(imgs.shape[0], 100)
+        z = z.type_as(imgs)
+
+        # train discriminator
+        if optimizer_idx == 0:
             imgs_gen = self.generator(z)
+            logits = self.discriminator(imgs_gen.detach())
+            fake = torch.zeros(imgs.size(0), 1)
+            fake = fake.type_as(imgs)
+            loss_fake = criterion(logits, fake)
 
             valid = torch.ones(imgs.size(0), 1)
             valid = valid.type_as(imgs)
+            logits = self.discriminator(imgs)
+            loss_real = loss = criterion(logits, valid)
+            loss = (loss_real + loss_fake) / 2
+            return {"model_outputs": logits}, {"loss": loss}
 
-            logits = self.discriminator(imgs_gen)
-            loss_real = criterion(logits, valid)
-            return {"model_outputs": logits}, {"loss": loss_real}
+        # train generator
+        assert optimizer_idx == 1
+        imgs_gen = self.generator(z)
 
-        @torch.inference_mode()
-        def eval_step(self, batch, criterion, optimizer_idx):
-            return self.train_step(batch, criterion, optimizer_idx)
+        valid = torch.ones(imgs.size(0), 1)
+        valid = valid.type_as(imgs)
 
-        def get_optimizer(self):
-            discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-            generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-            return [discriminator_optimizer, generator_optimizer]
+        logits = self.discriminator(imgs_gen)
+        loss_real = criterion(logits, valid)
+        return {"model_outputs": logits}, {"loss": loss_real}
 
-        def get_criterion(self):
-            return [nn.BCELoss(), nn.BCELoss()]
+    @torch.inference_mode()
+    def eval_step(
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self.train_step(batch, criterion, optimizer_idx)
 
-        def get_data_loader(self, config, is_eval, samples, verbose):
-            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-            dataset.data = dataset.data[:64]
-            dataset.targets = dataset.targets[:64]
-            return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
+    def get_optimizer(self) -> list[torch.optim.Optimizer]:
+        discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+        generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
+        return [discriminator_optimizer, generator_optimizer]
 
+    def get_criterion(self) -> list[nn.Module]:
+        return [nn.BCELoss(), nn.BCELoss()]
+
+    def get_data_loader(
+        self,
+        config: TrainerConfig,
+        *,
+        is_eval: bool = False,
+        samples: list[Any] | None = None,
+        verbose: bool = False,
+    ):
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
+        dataset.data = dataset.data[:64]
+        dataset.targets = dataset.targets[:64]
+        return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)
+
+
+def test_overfit_mnist_simple_gan(tmp_path):
     config = GANModelConfig()
     config.batch_size = 64
-    config.grad_clip = None
+    config.grad_clip = 0.0
 
     model = GANModel()
     trainer = Trainer(TrainerArgs(), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None)
@@ -152,76 +171,9 @@ def test_overfit_mnist_simple_gan(tmp_path):
 
 
 def test_overfit_accelerate_mnist_simple_gan(tmp_path):
-    @dataclass
-    class GANModelConfig(TrainerConfig):
-        epochs: int = 1
-        print_step: int = 2
-        training_seed: int = 666
-
-    class GANModel(TrainerModel):
-        def __init__(self) -> None:
-            super().__init__()
-            data_shape = (1, 28, 28)
-            self.generator = Generator(latent_dim=100, img_shape=data_shape)
-            self.discriminator = Discriminator(img_shape=data_shape)
-
-        def forward(self, x): ...
-
-        def train_step(self, batch, criterion, optimizer_idx):
-            imgs, _ = batch
-
-            # sample noise
-            z = torch.randn(imgs.shape[0], 100)
-            z = z.type_as(imgs)
-
-            # train discriminator
-            if optimizer_idx == 0:
-                imgs_gen = self.generator(z)
-                logits = self.discriminator(imgs_gen.detach())
-                fake = torch.zeros(imgs.size(0), 1)
-                fake = fake.type_as(imgs)
-                loss_fake = criterion(logits, fake)
-
-                valid = torch.ones(imgs.size(0), 1)
-                valid = valid.type_as(imgs)
-                logits = self.discriminator(imgs)
-                loss_real = loss = criterion(logits, valid)
-                loss = (loss_real + loss_fake) / 2
-                return {"model_outputs": logits}, {"loss": loss}
-
-            # train generator
-            assert optimizer_idx == 1
-            imgs_gen = self.generator(z)
-
-            valid = torch.ones(imgs.size(0), 1)
-            valid = valid.type_as(imgs)
-
-            logits = self.discriminator(imgs_gen)
-            loss_real = criterion(logits, valid)
-            return {"model_outputs": logits}, {"loss": loss_real}
-
-        @torch.inference_mode()
-        def eval_step(self, batch, criterion, optimizer_idx):
-            return self.train_step(batch, criterion, optimizer_idx)
-
-        def get_optimizer(self):
-            discriminator_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-            generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-            return [discriminator_optimizer, generator_optimizer]
-
-        def get_criterion(self):
-            return [nn.BCELoss(), nn.BCELoss()]
-
-        def get_data_loader(self, config, is_eval, samples, verbose):
-            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-            dataset.data = dataset.data[:64]
-            dataset.targets = dataset.targets[:64]
-            return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=False)
-
     config = GANModelConfig()
     config.batch_size = 64
-    config.grad_clip = None
+    config.grad_clip = 0.0
     config.training_seed = 333
 
     model = GANModel()

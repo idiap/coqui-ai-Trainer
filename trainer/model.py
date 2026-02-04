@@ -37,15 +37,15 @@ class TrainerModel(ABC, nn.Module):
         ...
         return outputs_dict
 
-    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """Format batch returned by the data loader before sending it to the model.
 
         If not implemented, model uses the batch as is.
         Can be used for data augmentation, feature ectraction, etc.
         """
-        return batch
+        return batch  # type: ignore[return-value]
 
-    def format_batch_on_device(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def format_batch_on_device(self, batch: dict[str, Any]) -> dict[str, Any]:
         """Format batch on device before sending it to the model.
 
         If not implemented, model uses the batch as is.
@@ -54,7 +54,7 @@ class TrainerModel(ABC, nn.Module):
         return batch
 
     def train_step(
-        self, batch: dict[str, Any] | list[Any], criterion: nn.Module, optimizer_idx: int | None = None
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Perform a single training step. Run the model forward ... and compute losses.
 
@@ -70,7 +70,7 @@ class TrainerModel(ABC, nn.Module):
         raise NotImplementedError(msg)
 
     def train_log(
-        self, batch: dict[str, Any] | list[Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int
+        self, batch: dict[str, Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int
     ) -> None:
         """Create visualizations and waveform examples for training.
 
@@ -91,7 +91,7 @@ class TrainerModel(ABC, nn.Module):
 
     @torch.inference_mode()
     def eval_step(
-        self, batch: dict[str, Any] | list[Any], criterion: nn.Module, optimizer_idx: int | None = None
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Perform a single evaluation step.
 
@@ -109,9 +109,7 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `eval_step()` is not implemented."
         raise NotImplementedError(msg)
 
-    def eval_log(
-        self, batch: dict[str, Any] | list[Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int
-    ) -> None:
+    def eval_log(self, batch: dict[str, Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int) -> None:
         """The same as `train_log()`."""
         msg = " [!] `eval_log()` is not implemented."
         raise NotImplementedError(msg)
@@ -146,7 +144,7 @@ class TrainerModel(ABC, nn.Module):
     def test_log(self, outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int) -> None:
         raise NotImplementedError
 
-    def optimize(self, batch: dict[str, Any] | list[Any], trainer: "Trainer") -> tuple[dict[str, Any], dict[str, Any]]:
+    def optimize(self, batch: dict[str, Any], trainer: "Trainer") -> tuple[dict[str, Any], dict[str, Any]]:
         """Model specific optimization step that must perform the following steps.
 
             1. Forward pass

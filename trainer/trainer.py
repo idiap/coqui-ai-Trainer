@@ -630,7 +630,7 @@ class Trainer:
             verbose=verbose,
         )
 
-    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """Format the dataloader output and return a batch.
 
         1. Call ```model.format_batch```.
@@ -643,18 +643,12 @@ class Trainer:
         Returns:
             Dict: Formatted batch.
         """
-        with suppress(NotImplementedError):
-            batch = self._get_model().format_batch(batch)
+        batch = self._get_model().format_batch(batch)
 
-        if isinstance(batch, dict):
-            for k, v in batch.items():
-                batch[k] = to_cuda(v)
-        elif isinstance(batch, list):
-            batch = [to_cuda(v) for v in batch]
+        for k, v in batch.items():
+            batch[k] = to_cuda(v)
 
-        with suppress(NotImplementedError):
-            batch = self._get_model().format_batch_on_device(batch)
-        return batch
+        return self._get_model().format_batch_on_device(batch)
 
     ######################
     # TRAIN FUNCTIONS
@@ -674,7 +668,7 @@ class Trainer:
 
     def _model_train_step(
         self,
-        batch: dict[str, Any] | list[Any],
+        batch: dict[str, Any],
         criterion: nn.Module,
         optimizer_idx: int | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -733,7 +727,7 @@ class Trainer:
 
     def _compute_loss(
         self,
-        batch: dict[str, Any] | list[Any],
+        batch: dict[str, Any],
         criterion: nn.Module,
         optimizer_idx: int | None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -779,7 +773,7 @@ class Trainer:
 
     def optimize(
         self,
-        batch: dict[str, Any] | list[Any],
+        batch: dict[str, Any],
         optimizer: torch.optim.Optimizer,
         scaler: "torch.GradScaler | None",
         criterion: nn.Module,
@@ -1114,7 +1108,7 @@ class Trainer:
     #######################
 
     def eval_step(
-        self, batch: dict[str, Any] | list[Any], step: int
+        self, batch: dict[str, Any], step: int
     ) -> tuple[dict[str, Any] | list[dict[str, Any]] | None, dict[str, Any] | None]:
         """Perform a evaluation step on a batch of inputs and log the process.
 
@@ -1191,6 +1185,7 @@ class Trainer:
         if self.args.rank == 0 and outputs is not None and batch is not None:
             model = self._get_model()
             with suppress(NotImplementedError):
+                # TODO: fix type error
                 model.eval_log(
                     batch,
                     outputs,
@@ -1422,7 +1417,7 @@ class Trainer:
 
     @rank_zero_only
     def update_training_dashboard_logger(
-        self, batch: dict[str, Any] | list[Any] | None = None, outputs: dict[str, Any] | None = None
+        self, batch: dict[str, Any] | None = None, outputs: dict[str, Any] | None = None
     ) -> None:
         aliases = [
             f"epoch-{self.epochs_done}",
