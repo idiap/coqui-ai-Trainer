@@ -55,7 +55,7 @@ class TrainerModel(ABC, nn.Module):
 
     def train_step(
         self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a single training step. Run the model forward ... and compute losses.
 
         Args:
@@ -92,7 +92,7 @@ class TrainerModel(ABC, nn.Module):
     @torch.inference_mode()
     def eval_step(
         self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a single evaluation step.
 
         Run the model forward ... and compute losses. In most cases, you can

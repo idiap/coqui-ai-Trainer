@@ -671,7 +671,7 @@ class Trainer:
         batch: dict[str, Any],
         criterion: nn.Module,
         optimizer_idx: int | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a training forward step. Compute model outputs and losses.
 
         Args:
@@ -730,7 +730,7 @@ class Trainer:
         batch: dict[str, Any],
         criterion: nn.Module,
         optimizer_idx: int | None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         device, dtype = self._get_autocast_args(
             mixed_precision=self.config.mixed_precision, precision=self.config.precision
         )
@@ -782,7 +782,7 @@ class Trainer:
         optimizer_idx: int | None = None,
         step_optimizer: bool = True,
         num_optimizers: int = 1,
-    ) -> tuple[dict[str, Any], dict[str, Any], float]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any], float]:
         """Perform a forward - backward pass and run the optimizer.
 
         Args:
@@ -893,7 +893,7 @@ class Trainer:
 
     def train_step(
         self, batch: dict[str, Any] | list[Any], batch_n_steps: int, step: int, loader_start_time: float
-    ) -> tuple[dict[str, Any] | list[dict[str, Any]] | None, dict[str, Any] | None]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a training step on a batch of inputs and log the process.
 
         Args:
@@ -911,7 +911,7 @@ class Trainer:
         loader_time = time.time() - loader_start_time
 
         # containers to hold model outputs and losses for each optimizer.
-        outputs: dict[str, Any] | list[dict[str, Any]]
+        outputs: dict[str, Any] | None
         loss_dict = {}
 
         # log learning rates (do it before they're updated in optimize())
@@ -961,7 +961,7 @@ class Trainer:
                     msg = " [!] Coqui Trainer does not support grad_accum_steps for multiple-optimizer setup, please set grad_accum_steps to 1 or implement in your model a custom `optimize` method to deal with dangling gradients in multiple-optimizer setup!"
                     raise ValueError(msg) from e
                 # auto training with multiple optimizers (e.g. GAN)
-                outputs_per_optimizer = []
+                outputs = {}
                 total_step_time = 0.0
                 for idx, optimizer in enumerate(self.optimizer):
                     # scaler = self.scaler[idx] if self.use_amp_scaler else None
@@ -978,7 +978,9 @@ class Trainer:
                     )
                     # skip the rest if the model returns None
                     total_step_time += step_time
-                    outputs_per_optimizer.append(optimizer_outputs)
+                    if optimizer_outputs is not None:
+                        for k, v in optimizer_outputs.items():
+                            outputs[f"{k}_{idx}"] = v
                     # merge loss_dicts from each optimizer
                     # rename duplicates with the optimizer idx
                     # if None, model skipped this optimizer
@@ -989,8 +991,6 @@ class Trainer:
                             else:
                                 loss_dict[k] = v
                     step_time = total_step_time
-
-                outputs = outputs_per_optimizer
 
                 # clear any pesky gradients after gradient accumulation
                 if step_optimizer:
@@ -1069,7 +1069,7 @@ class Trainer:
         batch_num_steps = len(self.train_loader)
         for cur_step, batch in enumerate(self.train_loader):
             outputs, _ = self.train_step(batch, batch_num_steps, cur_step, loader_start_time)
-            if outputs is None:
+            if not outputs:
                 logger.info(" [!] `train_step()` retuned `None` outputs. Skipping training step.")
                 continue
             del outputs
@@ -1107,9 +1107,7 @@ class Trainer:
     # EVAL FUNCTIONS
     #######################
 
-    def eval_step(
-        self, batch: dict[str, Any], step: int
-    ) -> tuple[dict[str, Any] | list[dict[str, Any]] | None, dict[str, Any] | None]:
+    def eval_step(self, batch: dict[str, Any], step: int) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a evaluation step on a batch of inputs and log the process.
 
         Args:
@@ -1119,26 +1117,26 @@ class Trainer:
         Returns:
             Tuple[Dict, Dict]: Model outputs and losses.
         """
-        outputs: dict[str, Any] | list[dict[str, Any]]
+        outputs: dict[str, Any] | None
+        loss_dict: dict[str, Any] | None
         with torch.inference_mode():
-            loss_dict: dict[str, Any] = {}
             model = self._get_model()
             if len(self.optimizer) == 1:
                 outputs, loss_dict = model.eval_step(batch, self.criterion[0])
-                if outputs is None:
+                if outputs is None or loss_dict is None:
                     return None, None
             else:
-                optimizer_outputs = []
+                outputs, loss_dict = {}, {}
                 for idx in range(len(self.optimizer)):
                     outputs_, loss_dict_new = model.eval_step(batch, self.criterion[idx], idx)
-                    if outputs_ is None:
+                    if outputs_ is None or loss_dict_new is None:
                         return None, None
-                    optimizer_outputs.append(outputs_)
+                    for k, v in outputs_.items():
+                        outputs[f"{k}_{idx}"] = v
 
                     if loss_dict_new:
                         loss_dict_new[f"loss_{idx}"] = loss_dict_new.pop("loss")
                         loss_dict.update(loss_dict_new)
-                outputs = optimizer_outputs
 
             loss_dict = self._detach_loss_dict(loss_dict)
 
