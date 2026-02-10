@@ -93,23 +93,6 @@ def load_fsspec(
             return torch.load(f, map_location=map_location, weights_only=_WEIGHTS_ONLY, **kwargs)
 
 
-def load_checkpoint(
-    model: torch.nn.Module,
-    checkpoint_path: str | os.PathLike[Any],
-    *,
-    use_cuda: bool = False,
-    eval: bool = False,
-    cache: bool = False,
-) -> tuple[torch.nn.Module, Any]:  # pylint: disable=redefined-builtin
-    state = load_fsspec(checkpoint_path, map_location=torch.device("cpu"), cache=cache)
-    model.load_state_dict(state["model"])
-    if use_cuda:
-        model.cuda()
-    if eval:
-        model.eval()
-    return model, state
-
-
 def save_fsspec(state: Any, path: str | os.PathLike[Any], **kwargs: Any) -> None:
     """Like torch.save but can save to other locations (e.g. s3:// , gs://).
 

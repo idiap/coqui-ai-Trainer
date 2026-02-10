@@ -33,12 +33,6 @@ def to_cuda(x: torch.Tensor) -> torch.Tensor:
     return x
 
 
-def get_cuda() -> tuple[bool, torch.device]:
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    return use_cuda, device
-
-
 def get_git_branch() -> str:
     try:
         out = subprocess.check_output(["git", "branch"]).decode("utf8")
