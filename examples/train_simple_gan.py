@@ -93,16 +93,16 @@ class GANModel(TrainerModel):
         logits = self.discriminator(imgs_gen.detach())
         fake = torch.zeros(imgs.size(0), 1)
         fake = fake.type_as(imgs)
-        loss_fake = trainer.criterion(logits, fake)
+        loss_fake = trainer.criterion[0](logits, fake)
 
         valid = torch.ones(imgs.size(0), 1)
         valid = valid.type_as(imgs)
         logits = self.discriminator(imgs)
-        loss_real = trainer.criterion(logits, valid)
+        loss_real = trainer.criterion[0](logits, valid)
         loss_disc = (loss_real + loss_fake) / 2
 
         # step dicriminator
-        self.scaled_backward(loss_disc, None, trainer)
+        self.scaled_backward(loss_disc, trainer)
 
         if trainer.total_steps_done % trainer.grad_accum_steps == 0:
             trainer.optimizer[0].step()
@@ -115,10 +115,10 @@ class GANModel(TrainerModel):
         valid = valid.type_as(imgs)
 
         logits = self.discriminator(imgs_gen)
-        loss_gen = trainer.criterion(logits, valid)
+        loss_gen = trainer.criterion[0](logits, valid)
 
         # step generator
-        self.scaled_backward(loss_gen, None, trainer)
+        self.scaled_backward(loss_gen, trainer)
         if trainer.total_steps_done % trainer.grad_accum_steps == 0:
             trainer.optimizer[1].step()
             trainer.optimizer[1].zero_grad()
@@ -148,7 +148,7 @@ class GANModel(TrainerModel):
     def get_criterion(self):
         return nn.BCELoss()
 
-    def get_data_loader(self, config, assets, is_eval, samples, verbose, num_gpus, rank=0):  # pylint: disable=unused-argument
+    def get_data_loader(self, config, is_eval, samples, verbose):
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
         dataset.data = dataset.data[:64]
@@ -159,7 +159,7 @@ class GANModel(TrainerModel):
 if __name__ == "__main__":
     config = GANModelConfig()
     config.batch_size = 64
-    config.grad_clip = None
+    config.grad_clip = 0
 
     model = GANModel()
     trainer = Trainer(TrainerArgs(), config, model=model, output_path=Path.cwd(), gpu=0 if is_cuda else None)

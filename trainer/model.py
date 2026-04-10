@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import nn
 
-from trainer._types import ValueListDict
+from trainer._types import LRScheduler
+from trainer.config import TrainerConfig
+from trainer.logging import BaseDashboardLogger
 
 if TYPE_CHECKING:
     from trainer.trainer import Trainer
@@ -35,15 +37,15 @@ class TrainerModel(ABC, nn.Module):
         ...
         return outputs_dict
 
-    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """Format batch returned by the data loader before sending it to the model.
 
         If not implemented, model uses the batch as is.
         Can be used for data augmentation, feature ectraction, etc.
         """
-        return batch
+        return batch  # type: ignore[return-value]
 
-    def format_batch_on_device(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def format_batch_on_device(self, batch: dict[str, Any]) -> dict[str, Any]:
         """Format batch on device before sending it to the model.
 
         If not implemented, model uses the batch as is.
@@ -51,7 +53,9 @@ class TrainerModel(ABC, nn.Module):
         """
         return batch
 
-    def train_step(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    def train_step(
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a single training step. Run the model forward ... and compute losses.
 
         Args:
@@ -65,7 +69,9 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `train_step()` is not implemented."
         raise NotImplementedError(msg)
 
-    def train_log(self, *args: Any, **kwargs: Any) -> None:
+    def train_log(
+        self, batch: dict[str, Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int
+    ) -> None:
         """Create visualizations and waveform examples for training.
 
         For example, here you can plot spectrograms and generate sample sample waveforms from these spectrograms to
@@ -75,7 +81,6 @@ class TrainerModel(ABC, nn.Module):
             batch (Dict): Model inputs used at the previous training step.
             outputs (Dict): Model outputs generated at the previoud training step.
             logger (Logger): Logger instance to log training plots.
-            assets (Dict): Assets to be used for logging from the trainer's closure.
             steps (int): Number of training steps taken so far.
 
         Returns:
@@ -85,7 +90,9 @@ class TrainerModel(ABC, nn.Module):
         raise NotImplementedError(msg)
 
     @torch.inference_mode()
-    def eval_step(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    def eval_step(
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a single evaluation step.
 
         Run the model forward ... and compute losses. In most cases, you can
@@ -102,23 +109,27 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `eval_step()` is not implemented."
         raise NotImplementedError(msg)
 
-    def eval_log(self, *args: Any, **kwargs: Any) -> None:
+    def eval_log(self, batch: dict[str, Any], outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int) -> None:
         """The same as `train_log()`."""
         msg = " [!] `eval_log()` is not implemented."
         raise NotImplementedError(msg)
 
     @abstractmethod
-    def get_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
+    def get_data_loader(
+        self,
+        config: TrainerConfig,
+        *,
+        is_eval: bool = False,
+        samples: list[Any] | None = None,
+        verbose: bool = True,
+    ) -> torch.utils.data.DataLoader[Any]:
         """Get data loader for the model.
 
         Args:
             config (TrainerConfig): Configuration object.
-            assets (Dict): Additional assets to be used for data loading.
             is_eval (bool): If True, returns evaluation data loader.
             samples (Union[List[Dict], List[List]]): List of samples to be used for data loading.
             verbose (bool): If True, prints data loading information.
-            num_gpus (int): Number of GPUs used for training.
-            rank (int): Rank of the current GPU.
 
         Returns:
             torch.utils.data.DataLoader: Data loader for the model.
@@ -127,22 +138,13 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `get_data_loader()` is not implemented."
         raise NotImplementedError(msg)
 
-    def get_train_data_loader(*args: Any, **kwargs: Any) -> torch.utils.data.DataLoader[Any]:
+    def test_run(self, trainer: "Trainer") -> dict[str, Any]:
         raise NotImplementedError
 
-    def test_run(self, *args: Any, **kwargs: Any):
+    def test_log(self, outputs: dict[str, Any], logger: BaseDashboardLogger, steps: int) -> None:
         raise NotImplementedError
 
-    def test(self, assets: dict[str, Any], data_loader: torch.utils.data.DataLoader[Any], outputs: Any | None = None):
-        raise NotImplementedError
-
-    def test_log(self, *args: Any, **kwargs: Any):
-        raise NotImplementedError
-
-    def init_for_training(self) -> None:
-        """Initialize model for training."""
-
-    def optimize(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    def optimize(self, batch: dict[str, Any], trainer: "Trainer") -> tuple[dict[str, Any], dict[str, Any]]:
         """Model specific optimization step that must perform the following steps.
 
             1. Forward pass
@@ -195,9 +197,7 @@ class TrainerModel(ABC, nn.Module):
         """
         raise NotImplementedError
 
-    def get_scheduler(
-        self, optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer] | dict[str, torch.optim.Optimizer]
-    ):
+    def get_scheduler(self, optimizer: list[torch.optim.Optimizer]) -> LRScheduler | list[LRScheduler | None] | None:
         raise NotImplementedError
 
     def get_criterion(self) -> nn.Module | list[nn.Module]:
@@ -218,11 +218,9 @@ class TrainerModel(ABC, nn.Module):
 
     def on_train_epoch_end(self, trainer: "Trainer") -> None: ...
 
-    @staticmethod
-    def before_backward_pass(loss_dict: dict[str, Any], optimizer: ValueListDict[torch.optim.Optimizer]) -> None: ...
+    def before_backward_pass(self, loss_dict: dict[str, Any], optimizer: list[torch.optim.Optimizer]) -> None: ...
 
-    @staticmethod
-    def before_gradient_clipping() -> None: ...
+    def before_gradient_clipping(self) -> None: ...
 
     def on_train_step_start(self, trainer: "Trainer") -> None: ...
 

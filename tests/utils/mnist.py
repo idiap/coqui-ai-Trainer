@@ -1,6 +1,7 @@
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch import nn
@@ -46,33 +47,41 @@ class MnistModel(TrainerModel):
 
         return F.log_softmax(x, dim=1)
 
-    def train_step(self, batch, criterion):
-        x, y = batch
-        logits = self(x)
-        loss = criterion(logits, y)
+    def train_step(
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        logits = self(batch["input"])
+        loss = criterion(logits, batch["target"])
         return {"model_outputs": logits}, {"loss": loss}
 
-    def eval_step(self, batch, criterion):
-        x, y = batch
-        logits = self(x)
-        loss = criterion(logits, y)
+    def eval_step(
+        self, batch: dict[str, Any], criterion: nn.Module, optimizer_idx: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        logits = self(batch["input"])
+        loss = criterion(logits, batch["target"])
         return {"model_outputs": logits}, {"loss": loss}
 
-    def get_criterion(self):
+    def get_criterion(self) -> nn.Module:
         return torch.nn.NLLLoss()
 
-    def get_data_loader(self, config, assets, *, is_eval, samples=None, verbose=False, num_gpus=1, rank=0):  # pylint: disable=unused-argument
+    def get_data_loader(
+        self, config: TrainerConfig, *, is_eval: bool = False, samples: list[Any] | None = None, verbose: bool = False
+    ):
+        def _collate_fn(batch):
+            x, y = zip(*batch, strict=True)
+            return {"input": torch.stack(x), "target": torch.tensor(y)}
+
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
         dataset.data = dataset.data[:256]
         dataset.targets = dataset.targets[:256]
-        return DataLoader(dataset, batch_size=config.batch_size)
+        return DataLoader(dataset, batch_size=config.batch_size, collate_fn=_collate_fn)
 
 
-def create_trainer(config, model, output_path, gpu, continue_path=None, restore_path=None):
+def create_trainer(config, model, output_path, gpu, continue_path="", restore_path=""):
     args = TrainerArgs(continue_path=continue_path, restore_path=restore_path)
     trainer = Trainer(args, config, output_path=output_path, model=model, gpu=gpu)
-    trainer.train_loader = trainer.get_train_dataloader(trainer.training_assets, trainer.train_samples)
+    trainer.train_loader = trainer.get_train_dataloader(trainer.train_samples)
     trainer.keep_avg_train = KeepAverage()
     return trainer
 

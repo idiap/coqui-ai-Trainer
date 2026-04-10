@@ -11,11 +11,10 @@ from urllib.parse import urlparse
 import fsspec
 import torch
 from coqpit import Coqpit
-from torch.optim.optimizer import StateDict
 from torch.types import Storage
 
-from trainer._types import LossDict, LRScheduler, ValueListDict
-from trainer.generic_utils import is_pytorch_at_least_2_4, map_value_list_dict
+from trainer._types import LossDict, LRScheduler
+from trainer.generic_utils import is_pytorch_at_least_2_4
 from trainer.logger import logger
 from trainer.model import TrainerModel
 
@@ -94,23 +93,6 @@ def load_fsspec(
             return torch.load(f, map_location=map_location, weights_only=_WEIGHTS_ONLY, **kwargs)
 
 
-def load_checkpoint(
-    model: torch.nn.Module,
-    checkpoint_path: str | os.PathLike[Any],
-    *,
-    use_cuda: bool = False,
-    eval: bool = False,
-    cache: bool = False,
-) -> tuple[torch.nn.Module, Any]:  # pylint: disable=redefined-builtin
-    state = load_fsspec(checkpoint_path, map_location=torch.device("cpu"), cache=cache)
-    model.load_state_dict(state["model"])
-    if use_cuda:
-        model.cuda()
-    if eval:
-        model.eval()
-    return model, state
-
-
 def save_fsspec(state: Any, path: str | os.PathLike[Any], **kwargs: Any) -> None:
     """Like torch.save but can save to other locations (e.g. s3:// , gs://).
 
@@ -130,26 +112,15 @@ def save_model(
     *,
     current_step: int,
     epoch: int,
-    optimizer: ValueListDict[torch.optim.Optimizer] | None = None,
-    scheduler: ValueListDict[LRScheduler] | None = None,
+    optimizer: list[torch.optim.Optimizer] | None = None,
+    scheduler: list[LRScheduler | None] | None = None,
     scaler: "torch.GradScaler | None" = None,
-    save_func: Callable[[Any, str | os.PathLike[Any]], None] | None = None,
     **kwargs: Any,
 ) -> None:
     model_state = model.state_dict()
-    optimizer_state: ValueListDict[StateDict] | None = None
-    if optimizer is not None:
-        optimizer_state = map_value_list_dict(optimizer, lambda o: o.state_dict())
-
-    scheduler_state: ValueListDict[StateDict] | None = None
-    if scheduler is not None:
-        scheduler_state = map_value_list_dict(scheduler, lambda s: s.state_dict())
-
-    scaler_state: StateDict | list[StateDict] | None = None
-    if isinstance(scaler, list):
-        scaler_state = [s.state_dict() for s in scaler]
-    else:
-        scaler_state = scaler.state_dict() if scaler is not None else None
+    optimizer_state = [o.state_dict() for o in optimizer] if optimizer else None
+    scheduler_state = [s.state_dict() for s in scheduler if s is not None] if scheduler else None
+    scaler_state = scaler.state_dict() if scaler is not None else None
 
     if isinstance(config, Coqpit):
         config = config.to_dict()
@@ -165,10 +136,7 @@ def save_model(
         "date": datetime.date.today().strftime("%B %d, %Y"),
     }
     state.update(kwargs)
-    if save_func is not None:
-        save_func(state, output_path)
-    else:
-        save_fsspec(state, output_path)
+    save_fsspec(state, output_path)
 
 
 def save_checkpoint(
@@ -178,11 +146,10 @@ def save_checkpoint(
     *,
     current_step: int,
     epoch: int,
-    optimizer: ValueListDict[torch.optim.Optimizer] | None = None,
-    scheduler: ValueListDict[LRScheduler] | None = None,
+    optimizer: list[torch.optim.Optimizer] | None = None,
+    scheduler: list[LRScheduler | None] | None = None,
     scaler: "torch.GradScaler | None" = None,
     save_n_checkpoints: int | None = None,
-    save_func: Callable[[Any, str | os.PathLike[Any]], None] | None = None,
     **kwargs: Any,
 ) -> None:
     file_name = f"checkpoint_{current_step}.pth"
@@ -198,7 +165,6 @@ def save_checkpoint(
         optimizer=optimizer,
         scheduler=scheduler,
         scaler=scaler,
-        save_func=save_func,
         **kwargs,
     )
     if save_n_checkpoints is not None:
@@ -214,12 +180,11 @@ def save_best_model(
     *,
     current_step: int,
     epoch: int,
-    optimizer: ValueListDict[torch.optim.Optimizer] | None = None,
-    scheduler: ValueListDict[LRScheduler] | None = None,
+    optimizer: list[torch.optim.Optimizer] | None = None,
+    scheduler: list[LRScheduler | None] | None = None,
     scaler: "torch.GradScaler | None" = None,
     keep_all_best: bool = False,
     keep_after: int = 0,
-    save_func: Callable[[Any, str | os.PathLike[Any]], None] | None = None,
     **kwargs: Any,
 ) -> LossDict | float:
     if isinstance(current_loss, dict) and isinstance(best_loss, dict):
@@ -247,7 +212,6 @@ def save_best_model(
             scheduler=scheduler,
             scaler=scaler,
             model_loss=current_loss,
-            save_func=save_func,
             **kwargs,
         )
         fs = fsspec.get_mapper(str(out_path)).fs

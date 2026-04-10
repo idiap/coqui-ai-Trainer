@@ -45,11 +45,13 @@ class TrainerCallback:
     def on_init_start(self, trainer: "Trainer") -> None:
         trainer._get_model().on_init_start(trainer)
 
-        if hasattr(trainer.criterion, "on_init_start"):
-            trainer.criterion.on_init_start(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_init_start"):
+                criterion.on_init_start(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_init_start"):
-            trainer.optimizer.on_init_start(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_init_start"):
+                optimizer.on_init_start(trainer)
 
         if self.callbacks_on_init_start:
             for callback in self.callbacks_on_init_start:
@@ -58,11 +60,13 @@ class TrainerCallback:
     def on_init_end(self, trainer: "Trainer") -> None:
         trainer._get_model().on_init_end(trainer)
 
-        if hasattr(trainer.criterion, "on_init_end"):
-            trainer.criterion.on_init_end(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_init_end"):
+                criterion.on_init_end(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_init_end"):
-            trainer.optimizer.on_init_end(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_init_end"):
+                optimizer.on_init_end(trainer)
 
         if len(self.callbacks_on_init_end) > 0:
             for callback in self.callbacks_on_init_end:
@@ -71,11 +75,13 @@ class TrainerCallback:
     def on_epoch_start(self, trainer: "Trainer") -> None:
         trainer._get_model().on_epoch_start(trainer)
 
-        if hasattr(trainer.criterion, "on_epoch_start"):
-            trainer.criterion.on_epoch_start(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_epoch_start"):
+                criterion.on_epoch_start(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_epoch_start"):
-            trainer.optimizer.on_epoch_start(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_epoch_start"):
+                optimizer.on_epoch_start(trainer)
 
         if self.callbacks_on_epoch_start:
             for callback in self.callbacks_on_epoch_start:
@@ -84,11 +90,13 @@ class TrainerCallback:
     def on_epoch_end(self, trainer: "Trainer") -> None:
         trainer._get_model().on_epoch_end(trainer)
 
-        if hasattr(trainer.criterion, "on_epoch_end"):
-            trainer.criterion.on_epoch_end(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_epoch_end"):
+                criterion.on_epoch_end(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_epoch_end"):
-            trainer.optimizer.on_epoch_end(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_epoch_end"):
+                optimizer.on_epoch_end(trainer)
 
         if self.callbacks_on_epoch_end:
             for callback in self.callbacks_on_epoch_end:
@@ -97,11 +105,13 @@ class TrainerCallback:
     def on_train_epoch_start(self, trainer: "Trainer") -> None:
         trainer._get_model().on_train_epoch_start(trainer)
 
-        if hasattr(trainer.criterion, "on_train_epoch_start"):
-            trainer.criterion.on_train_epoch_start(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_train_epoch_start"):
+                criterion.on_train_epoch_start(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_train_epoch_start"):
-            trainer.optimizer.on_train_epoch_start(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_train_epoch_start"):
+                optimizer.on_train_epoch_start(trainer)
 
         if self.callbacks_on_train_epoch_start:
             for callback in self.callbacks_on_train_epoch_start:
@@ -110,11 +120,13 @@ class TrainerCallback:
     def on_train_epoch_end(self, trainer: "Trainer") -> None:
         trainer._get_model().on_train_epoch_end(trainer)
 
-        if hasattr(trainer.criterion, "on_train_epoch_end"):
-            trainer.criterion.on_train_epoch_end(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_train_epoch_end"):
+                criterion.on_train_epoch_end(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_train_epoch_end"):
-            trainer.optimizer.on_train_epoch_end(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_train_epoch_end"):
+                optimizer.on_train_epoch_end(trainer)
 
         if self.callbacks_on_train_epoch_end:
             for callback in self.callbacks_on_train_epoch_end:
@@ -131,11 +143,13 @@ class TrainerCallback:
     def on_train_step_start(self, trainer: "Trainer") -> None:
         trainer._get_model().on_train_step_start(trainer)
 
-        if hasattr(trainer.criterion, "on_train_step_start"):
-            trainer.criterion.on_train_step_start(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_train_step_start"):
+                criterion.on_train_step_start(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_train_step_start"):
-            trainer.optimizer.on_train_step_start(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_train_step_start"):
+                optimizer.on_train_step_start(trainer)
 
         if self.callbacks_on_train_step_start:
             for callback in self.callbacks_on_train_step_start:
@@ -144,11 +158,13 @@ class TrainerCallback:
     def on_train_step_end(self, trainer: "Trainer") -> None:
         trainer._get_model().on_train_step_end(trainer)
 
-        if hasattr(trainer.criterion, "on_train_step_end"):
-            trainer.criterion.on_train_step_end(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_train_step_end"):
+                criterion.on_train_step_end(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_train_step_end"):
-            trainer.optimizer.on_train_step_end(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_train_step_end"):
+                optimizer.on_train_step_end(trainer)
 
         if self.callbacks_on_train_step_end:
             for callback in self.callbacks_on_train_step_end:
@@ -157,11 +173,13 @@ class TrainerCallback:
     def on_keyboard_interrupt(self, trainer: "Trainer") -> None:
         trainer._get_model().on_keyboard_interrupt(trainer)
 
-        if hasattr(trainer.criterion, "on_keyboard_interrupt"):
-            trainer.criterion.on_keyboard_interrupt(trainer)  # type: ignore[operator]
+        for criterion in trainer.criterion:
+            if hasattr(criterion, "on_keyboard_interrupt"):
+                criterion.on_keyboard_interrupt(trainer)  # type: ignore[operator]
 
-        if hasattr(trainer.optimizer, "on_keyboard_interrupt"):
-            trainer.optimizer.on_keyboard_interrupt(trainer)
+        for optimizer in trainer.optimizer:
+            if hasattr(optimizer, "on_keyboard_interrupt"):
+                optimizer.on_keyboard_interrupt(trainer)
 
         if self.callbacks_on_keyboard_interrupt:
             for callback in self.callbacks_on_keyboard_interrupt:

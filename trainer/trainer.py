@@ -1,3 +1,4 @@
+import copy
 import functools
 import gc
 import logging
@@ -9,7 +10,6 @@ import time
 import traceback
 from collections.abc import Generator
 from contextlib import nullcontext, suppress
-from inspect import signature
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP_th
 from torch.utils.data import DataLoader
 
-from trainer._types import Callback, LossDict, LRScheduler, ValueListDict
+from trainer._types import Callback, LossDict, LRScheduler
 from trainer.callbacks import TrainerCallback
 from trainer.config import TrainerArgs, TrainerConfig
 from trainer.generic_utils import (
@@ -29,8 +29,6 @@ from trainer.generic_utils import (
     get_git_branch,
     is_pytorch_at_least_2_3,
     is_pytorch_at_least_2_4,
-    iter_value_list_dict,
-    map_value_list_dict,
     remove_experiment_folder,
     set_partial_state_dict,
     to_cuda,
@@ -42,8 +40,7 @@ from trainer.io import (
     save_best_model,
     save_checkpoint,
 )
-from trainer.logging import ConsoleLogger, DummyLogger, logger_factory
-from trainer.logging.base_dash_logger import BaseDashboardLogger
+from trainer.logging import BaseDashboardLogger, ConsoleLogger, DummyLogger, logger_factory
 from trainer.model import TrainerModel
 from trainer.trainer_utils import (
     get_optimizer,
@@ -79,10 +76,8 @@ class Trainer:
         model: TrainerModel | None = None,
         train_samples: list[Any] | None = None,
         eval_samples: list[Any] | None = None,
-        test_samples: list[Any] | None = None,
         train_loader: DataLoader[Any] | None = None,
         eval_loader: DataLoader[Any] | None = None,
-        training_assets: dict[str, Any] | None = None,
         parse_command_line_args: bool = True,
         callbacks: dict[str, Callback] | None = None,
         gpu: int | None = None,
@@ -114,7 +109,7 @@ class Trainer:
                 initializes a model from the provided config. Defaults to None.
 
             train_samples (List):
-                A list of training samples used by the model's `get_train_data_loader` to init the `dataset` and the
+                A list of training samples used by the model's training dataloader to init the `dataset` and the
                 `data_loader`. Defaults to None.
 
             eval_samples (List):
@@ -126,14 +121,6 @@ class Trainer:
 
             eval_loader (DataLoader):
                 A pytorch data loader object for evaluation epochs. Leave as None to be generated during training. Defaults to None.
-
-            test_samples (List):
-                A list of test samples used by the `get_eval_dataloader` to init the `dataset` and the
-                `data_loader`. If None, the ```model.test_run()``` is expected to load the data. Defaults to None.
-
-            training_assets (Dict):
-                A dictionary of assets to be used at training and passed to the model's ```train_log(), eval_log(), get_data_loader()```
-                during training. It can include  `AudioProcessor` or/and `Tokenizer`. Defaults to {}.
 
             parse_command_line_args (bool):
                 If true, parse command-line arguments and update `TrainerArgs` and model `config` values. Set it
@@ -156,14 +143,11 @@ class Trainer:
             >>> trainer.fit()
 
         TODO:
-                - Wrap model for not calling .module in DDP.
                 - Deepspeed integration
                 - Profiler integration.
                 - Overfitting to a batch.
                 - TPU training
         """
-        if training_assets is None:
-            training_assets = {}
         if callbacks is None:
             callbacks = {}
 
@@ -198,7 +182,6 @@ class Trainer:
         self.args = args
         self.config = config
         self.output_path = Path(output_path)
-        self.training_assets = training_assets
         self.grad_accum_steps = args.grad_accum_steps
         self.overfit_batch = args.overfit_batch
         self.skip_train_epoch = args.skip_train_epoch
@@ -246,12 +229,10 @@ class Trainer:
 
         self.train_samples: list[Any] | None = None
         self.eval_samples: list[Any] | None = None
-        self.test_samples: list[Any] | None = None
         if train_samples is not None:
             # use provided samples, else expecting to load samples in `model.get_data_loader()`
             self.train_samples = train_samples
             self.eval_samples = eval_samples
-            self.test_samples = test_samples
 
         # define custom train and eval loader
         self.train_loader = train_loader
@@ -266,13 +247,10 @@ class Trainer:
             raise ValueError(msg)
         self.model = model
 
-        # init model's training assets
-        self.model.init_for_training()
-
         # setup criterion
-        self.criterion = self.get_criterion(self.model)
+        self.criterion = self.get_criterion()
 
-        # DISTRUBUTED
+        # DISTRIBUTED
         if self.use_pt_ddp:
             rank_zero_logger_info(" > Using PyTorch DDP", logger)
             init_distributed(
@@ -285,19 +263,33 @@ class Trainer:
 
         if self.use_cuda:
             self.model.cuda()
-            if isinstance(self.criterion, list):
-                for criterion in self.criterion:
-                    if isinstance(criterion, nn.Module):
-                        criterion.cuda()
-            elif isinstance(self.criterion, nn.Module):
-                self.criterion.cuda()
+            for criterion in self.criterion:
+                if isinstance(criterion, nn.Module):
+                    criterion.cuda()
 
         # setup optimizer and scheduler
-        self.optimizer = self.get_optimizer(self.model, self.config)
-        self.scheduler = self.get_scheduler(self.model, self.config, self.optimizer)
+        self.optimizer = self.get_optimizer()
+        self.scheduler = self.get_scheduler()
         # With multiple optimizers, some are not used all the time. We keep
         # track of that to know whether to step the corresponding schedulers.
         self._stepped_optimizers: set[int | None] = set()
+
+        num_optimizers = len(self.optimizer)
+        if num_optimizers > 1:
+            if len(self.criterion) == 1:
+                logger.warning(
+                    "Single criterion expanded to %i copies to match the number of optimizers.", num_optimizers
+                )
+                self.criterion = [copy.deepcopy(self.criterion[0]) for _ in range(num_optimizers)]
+            if len(self.scheduler) == 1:
+                logger.warning(
+                    "Single scheduler expanded to %i copies to match the number of optimizers.", num_optimizers
+                )
+                self.scheduler = [copy.deepcopy(self.scheduler[0]) for _ in range(num_optimizers)]
+        if len(self.optimizer) != len(self.scheduler) != len(self.criterion):
+            lengths = f"{len(self.optimizer)} != {len(self.scheduler)} != {len(self.criterion)}"
+            msg = f"get_optimizer(), get_scheduler() and get_criterion must return the same number of items: {lengths}"
+            raise RuntimeError(msg)
 
         # CALLBACK
         self.callbacks = TrainerCallback()
@@ -359,9 +351,9 @@ class Trainer:
     @staticmethod
     def init_accelerate(
         model: TrainerModel,
-        optimizer: ValueListDict[torch.optim.Optimizer],
+        optimizer: list[torch.optim.Optimizer],
         training_dataloader: DataLoader[Any] | None,
-        scheduler: LRScheduler | list[LRScheduler] | dict[str, LRScheduler] | None,
+        scheduler: list[LRScheduler | None],
         *,
         grad_accum_steps: int,
         mixed_precision: bool,
@@ -386,13 +378,12 @@ class Trainer:
         if isinstance(model, nn.Module):
             model = accelerator.prepare_model(model)
 
-        optimizer = map_value_list_dict(optimizer, accelerator.prepare_optimizer)
+        optimizer = [accelerator.prepare_optimizer(o) for o in optimizer]
 
         if isinstance(training_dataloader, torch.utils.data.DataLoader):
             training_dataloader = accelerator.prepare_data_loader(training_dataloader)
 
-        if scheduler is not None:
-            scheduler = map_value_list_dict(scheduler, accelerator.prepare_scheduler)
+        scheduler = [accelerator.prepare_scheduler(s) if s is not None else None for s in scheduler]
 
         return model, optimizer, training_dataloader, scheduler, accelerator
 
@@ -443,7 +434,6 @@ class Trainer:
             logger.info("[!] Small Run, only using %i samples.", small_run)
             self.train_samples = None if self.train_samples is None else self.train_samples[:small_run]
             self.eval_samples = None if self.eval_samples is None else self.eval_samples[:small_run]
-            self.test_samples = None if self.test_samples is None else self.test_samples[:small_run]
 
     @staticmethod
     def init_training(
@@ -520,14 +510,10 @@ class Trainer:
         """
 
         def _restore_list_objs(states: Any, obj: Any) -> None:
-            if isinstance(obj, list):
-                for idx, state in enumerate(states):
-                    obj[idx].load_state_dict(state)
-            elif isinstance(obj, dict):
-                for key, state in states.items():
-                    obj[key].load_state_dict(state)
-            else:
-                obj.load_state_dict(states)
+            if not isinstance(states, list):
+                states = [states]
+            for idx, state in enumerate(states):
+                obj[idx].load_state_dict(state)
 
         verb = "Continuing" if self.continue_run else "Restoring"
         logger.info(" > %s from %s ...", verb, os.path.basename(self.args.restore_path))
@@ -545,9 +531,9 @@ class Trainer:
                 if checkpoint.get("scheduler"):
                     logger.info(" > Restoring Scheduler...")
                     _restore_list_objs(checkpoint["scheduler"], self.scheduler)
-                if "scaler" in checkpoint and self.use_amp_scaler and checkpoint["scaler"]:
+                if "scaler" in checkpoint and self.use_amp_scaler and checkpoint["scaler"] and self.scaler is not None:
                     logger.info(" > Restoring Scaler...")
-                    _restore_list_objs(checkpoint["scaler"], self.scaler)
+                    self.scaler.load_state_dict(checkpoint["scaler"])
         except (KeyError, RuntimeError, ValueError):
             logger.info(" > Partial model initialization...")
             model_dict = self.model.state_dict()
@@ -569,10 +555,10 @@ class Trainer:
 
     def reset_lr(self) -> None:
         """Reset learning rate to default values."""
-        for key, optim in iter_value_list_dict(self.optimizer):
+        lr = self.get_lr()
+        for idx, optim in enumerate(self.optimizer):
             for group in optim.param_groups:
-                lr = self.get_lr(self.model, self.config)
-                group["lr"] = lr[key] if key is not None else lr  # type: ignore[index]
+                group["lr"] = lr[idx]
 
     #########################
     # DATA LOADING FUNCTIONS
@@ -582,21 +568,16 @@ class Trainer:
         self,
         model: TrainerModel,
         config: TrainerConfig,
-        assets: dict[str, Any],
         samples: list[Any] | None,
         *,
         is_eval: bool,
         verbose: bool,
-        num_gpus: int,
     ) -> DataLoader[Any]:
         loader = model.get_data_loader(
             config=config,
-            assets=assets,
             is_eval=is_eval,
             samples=samples,
             verbose=verbose,
-            num_gpus=num_gpus,
-            rank=self.args.rank,
         )
 
         assert len(loader) > 0, (
@@ -609,13 +590,8 @@ class Trainer:
             return self.model
         return self.wrapped_model
 
-    def get_train_dataloader(
-        self, training_assets: dict[str, Any], samples: list[Any] | None, *, verbose: bool = True
-    ) -> DataLoader[Any]:
+    def get_train_dataloader(self, samples: list[Any] | None, *, verbose: bool = True) -> DataLoader[Any]:
         """Initialize and return a training data loader.
-
-        Call ```model.get_train_data_loader``` if it is implemented, else call ```model.get_data_loader```
-        and set ```is_eval=False```.
 
         Args:
             ap (AudioProcessor): Audio processor.
@@ -625,30 +601,15 @@ class Trainer:
         Returns:
             DataLoader: Initialized training data loader.
         """
-        model = self._get_model()
-        try:
-            return model.get_train_data_loader(
-                self.config,
-                self.training_assets,
-                samples,
-                verbose,
-                self.num_gpus,
-                self.args.rank,
-            )
-        except NotImplementedError:
-            return self._get_loader(
-                model,
-                self.config,
-                training_assets,
-                samples,
-                is_eval=False,
-                verbose=verbose,
-                num_gpus=self.num_gpus,
-            )
+        return self._get_loader(
+            self._get_model(),
+            self.config,
+            samples,
+            is_eval=False,
+            verbose=verbose,
+        )
 
-    def get_eval_dataloader(
-        self, training_assets: dict[str, Any], samples: list[Any] | None, *, verbose: bool
-    ) -> DataLoader[Any]:
+    def get_eval_dataloader(self, samples: list[Any] | None, *, verbose: bool = True) -> DataLoader[Any]:
         """Initialize and return a evaluation data loader.
 
         Call ```model.get_data_loader``` and set ```is_eval=True```.
@@ -664,14 +625,12 @@ class Trainer:
         return self._get_loader(
             self._get_model(),
             self.config,
-            training_assets,
             samples,
             is_eval=True,
             verbose=verbose,
-            num_gpus=self.num_gpus,
         )
 
-    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
+    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """Format the dataloader output and return a batch.
 
         1. Call ```model.format_batch```.
@@ -684,18 +643,12 @@ class Trainer:
         Returns:
             Dict: Formatted batch.
         """
-        with suppress(NotImplementedError):
-            batch = self._get_model().format_batch(batch)
+        batch = self._get_model().format_batch(batch)
 
-        if isinstance(batch, dict):
-            for k, v in batch.items():
-                batch[k] = to_cuda(v)
-        elif isinstance(batch, list):
-            batch = [to_cuda(v) for v in batch]
+        for k, v in batch.items():
+            batch[k] = to_cuda(v)
 
-        with suppress(NotImplementedError):
-            batch = self._get_model().format_batch_on_device(batch)
-        return batch
+        return self._get_model().format_batch_on_device(batch)
 
     ######################
     # TRAIN FUNCTIONS
@@ -715,10 +668,10 @@ class Trainer:
 
     def _model_train_step(
         self,
-        batch: dict[str, Any] | list[Any],
-        criterion: nn.Module | list[nn.Module],
+        batch: dict[str, Any],
+        criterion: nn.Module,
         optimizer_idx: int | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a training forward step. Compute model outputs and losses.
 
         Args:
@@ -774,18 +727,15 @@ class Trainer:
 
     def _compute_loss(
         self,
-        batch: dict[str, Any] | list[Any],
-        criterion: nn.Module | list[nn.Module],
+        batch: dict[str, Any],
+        criterion: nn.Module,
         optimizer_idx: int | None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         device, dtype = self._get_autocast_args(
             mixed_precision=self.config.mixed_precision, precision=self.config.precision
         )
         with torch.autocast(device_type=device, dtype=dtype, enabled=self.config.mixed_precision):
-            if optimizer_idx is not None:
-                outputs, loss_dict = self._model_train_step(batch, criterion, optimizer_idx=optimizer_idx)
-            else:
-                outputs, loss_dict = self._model_train_step(batch, criterion)
+            outputs, loss_dict = self._model_train_step(batch, criterion, optimizer_idx)
         return outputs, loss_dict
 
     @staticmethod
@@ -823,16 +773,16 @@ class Trainer:
 
     def optimize(
         self,
-        batch: dict[str, Any] | list[Any],
+        batch: dict[str, Any],
         optimizer: torch.optim.Optimizer,
         scaler: "torch.GradScaler | None",
-        criterion: nn.Module | list[nn.Module],
+        criterion: nn.Module,
         scheduler: LRScheduler | None,
         *,
         optimizer_idx: int | None = None,
         step_optimizer: bool = True,
         num_optimizers: int = 1,
-    ) -> tuple[dict[str, Any], dict[str, Any], float]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any], float]:
         """Perform a forward - backward pass and run the optimizer.
 
         Args:
@@ -943,7 +893,7 @@ class Trainer:
 
     def train_step(
         self, batch: dict[str, Any] | list[Any], batch_n_steps: int, step: int, loader_start_time: float
-    ) -> tuple[dict[str, Any] | list[dict[str, Any]] | None, dict[str, Any] | None]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a training step on a batch of inputs and log the process.
 
         Args:
@@ -961,13 +911,13 @@ class Trainer:
         loader_time = time.time() - loader_start_time
 
         # containers to hold model outputs and losses for each optimizer.
-        outputs: dict[str, Any] | list[dict[str, Any]]
+        outputs: dict[str, Any] | None
         loss_dict = {}
 
         # log learning rates (do it before they're updated in optimize())
         lrs = {}
-        for key, optim in iter_value_list_dict(self.optimizer):
-            name = f"current_lr_{key}" if key is not None else "current_lr"
+        for idx, optim in enumerate(self.optimizer):
+            name = f"current_lr_{idx}" if len(self.optimizer) > 1 else "current_lr"
             lrs[name] = optim.param_groups[0]["lr"]
         loss_dict.update(lrs)
 
@@ -994,20 +944,14 @@ class Trainer:
             if ((step + 1) % self.grad_accum_steps != 0) and (step + 1 != batch_n_steps):
                 step_optimizer = False
 
-            if not isinstance(self.optimizer, list):
-                if isinstance(self.scheduler, list):
-                    msg = "Can't use list of schedulers with a single optimizer."
-                    raise TypeError(msg) from e
-                if isinstance(self.optimizer, dict) or isinstance(self.scheduler, dict):
-                    msg = "Can only use dict of optimizers/schedulers with custom `optimize()`"
-                    raise TypeError(msg) from e
+            if len(self.optimizer) == 1:
                 # auto training with a single optimizer
                 outputs, loss_dict_new, step_time = self.optimize(
                     batch,
-                    self.optimizer,
+                    self.optimizer[0],
                     self.scaler,
-                    self.criterion,
-                    self.scheduler,
+                    self.criterion[0],
+                    self.scheduler[0],
                     step_optimizer=step_optimizer,
                     num_optimizers=1,
                 )
@@ -1017,28 +961,26 @@ class Trainer:
                     msg = " [!] Coqui Trainer does not support grad_accum_steps for multiple-optimizer setup, please set grad_accum_steps to 1 or implement in your model a custom `optimize` method to deal with dangling gradients in multiple-optimizer setup!"
                     raise ValueError(msg) from e
                 # auto training with multiple optimizers (e.g. GAN)
-                outputs_per_optimizer = []
+                outputs = {}
                 total_step_time = 0.0
                 for idx, optimizer in enumerate(self.optimizer):
-                    criterion = self.criterion
                     # scaler = self.scaler[idx] if self.use_amp_scaler else None
                     scaler = self.scaler
-                    scheduler = None
-                    if self.scheduler is not None and isinstance(self.scheduler, list):
-                        scheduler = self.scheduler[idx]
                     optimizer_outputs, loss_dict_new, step_time = self.optimize(
                         batch,
                         optimizer,
                         scaler,
-                        criterion,
-                        scheduler,
+                        self.criterion[idx],
+                        self.scheduler[idx],
                         optimizer_idx=idx,
                         step_optimizer=step_optimizer,
                         num_optimizers=len(self.optimizer),
                     )
                     # skip the rest if the model returns None
                     total_step_time += step_time
-                    outputs_per_optimizer.append(optimizer_outputs)
+                    if optimizer_outputs is not None:
+                        for k, v in optimizer_outputs.items():
+                            outputs[f"{k}_{idx}"] = v
                     # merge loss_dicts from each optimizer
                     # rename duplicates with the optimizer idx
                     # if None, model skipped this optimizer
@@ -1049,8 +991,6 @@ class Trainer:
                             else:
                                 loss_dict[k] = v
                     step_time = total_step_time
-
-                outputs = outputs_per_optimizer
 
                 # clear any pesky gradients after gradient accumulation
                 if step_optimizer:
@@ -1065,8 +1005,8 @@ class Trainer:
 
             # update avg loss stats
             update_eval_values = {}
-            for key, value in loss_dict.items():
-                update_eval_values["avg_" + key] = value
+            for k, value in loss_dict.items():
+                update_eval_values["avg_" + k] = value
             self.keep_avg_train.update_values(update_eval_values)
 
         # print training progress
@@ -1113,7 +1053,6 @@ class Trainer:
         # initialize the data loader
         if self.train_loader is None:
             self.train_loader = self.get_train_dataloader(
-                self.training_assets,
                 self.train_samples,
                 verbose=True,
             )
@@ -1130,7 +1069,7 @@ class Trainer:
         batch_num_steps = len(self.train_loader)
         for cur_step, batch in enumerate(self.train_loader):
             outputs, _ = self.train_step(batch, batch_num_steps, cur_step, loader_start_time)
-            if outputs is None:
+            if not outputs:
                 logger.info(" [!] `train_step()` retuned `None` outputs. Skipping training step.")
                 continue
             del outputs
@@ -1149,8 +1088,8 @@ class Trainer:
         self.callbacks.on_train_epoch_end(self)
 
         # scheduler step
-        if self.scheduler is not None and self.config.scheduler_after_epoch:
-            for idx, scheduler in iter_value_list_dict(self.scheduler):
+        if self.config.scheduler_after_epoch:
+            for idx, scheduler in enumerate(self.scheduler):
                 if scheduler is not None and idx in self._stepped_optimizers:
                     scheduler.step()
         self._stepped_optimizers.clear()
@@ -1168,9 +1107,7 @@ class Trainer:
     # EVAL FUNCTIONS
     #######################
 
-    def eval_step(
-        self, batch: dict[str, Any] | list[Any], step: int
-    ) -> tuple[dict[str, Any] | list[dict[str, Any]] | None, dict[str, Any] | None]:
+    def eval_step(self, batch: dict[str, Any], step: int) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Perform a evaluation step on a batch of inputs and log the process.
 
         Args:
@@ -1180,26 +1117,26 @@ class Trainer:
         Returns:
             Tuple[Dict, Dict]: Model outputs and losses.
         """
-        outputs: dict[str, Any] | list[dict[str, Any]]
+        outputs: dict[str, Any] | None
+        loss_dict: dict[str, Any] | None
         with torch.inference_mode():
-            loss_dict: dict[str, Any] = {}
             model = self._get_model()
-            if not isinstance(self.optimizer, list) or len(signature(model.eval_step).parameters) == 2:  # noqa: PLR2004
-                outputs, loss_dict = model.eval_step(batch, self.criterion)
-                if outputs is None:
+            if len(self.optimizer) == 1:
+                outputs, loss_dict = model.eval_step(batch, self.criterion[0])
+                if outputs is None or loss_dict is None:
                     return None, None
             else:
-                optimizer_outputs = []
-                for idx, _ in enumerate(self.optimizer):
-                    outputs_, loss_dict_new = model.eval_step(batch, self.criterion, idx)
-                    if outputs_ is None:
+                outputs, loss_dict = {}, {}
+                for idx in range(len(self.optimizer)):
+                    outputs_, loss_dict_new = model.eval_step(batch, self.criterion[idx], idx)
+                    if outputs_ is None or loss_dict_new is None:
                         return None, None
-                    optimizer_outputs.append(outputs_)
+                    for k, v in outputs_.items():
+                        outputs[f"{k}_{idx}"] = v
 
                     if loss_dict_new:
                         loss_dict_new[f"loss_{idx}"] = loss_dict_new.pop("loss")
                         loss_dict.update(loss_dict_new)
-                outputs = optimizer_outputs
 
             loss_dict = self._detach_loss_dict(loss_dict)
 
@@ -1224,7 +1161,7 @@ class Trainer:
         self.keep_avg_eval = KeepAverage() if self.keep_avg_eval is None else self.keep_avg_eval
 
         if self.eval_loader is None:
-            self.eval_loader = self.get_eval_dataloader(self.training_assets, self.eval_samples, verbose=True)
+            self.eval_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
 
         self.model.eval()
         self.c_logger.print_eval_start()
@@ -1243,14 +1180,14 @@ class Trainer:
             outputs = outputs_
             loader_start_time = time.time()
         # plot epoch stats, artifacts and figures
-        if self.args.rank == 0 and outputs is not None:
+        if self.args.rank == 0 and outputs is not None and batch is not None:
             model = self._get_model()
             with suppress(NotImplementedError):
+                # TODO: fix type error
                 model.eval_log(
                     batch,
                     outputs,
                     self.dashboard_logger,
-                    self.training_assets,
                     self.total_steps_done,
                 )
             self.dashboard_logger.eval_stats(self.total_steps_done, self.keep_avg_eval.avg_values)
@@ -1264,28 +1201,14 @@ class Trainer:
 
         Test run is expected to pass over test samples and produce logging artifacts.
 
-        If ```model.test_run()``` is defined, it will be called and it is expected to set and execute everything
-        in the model.
-
-        Else if  ```model.test()``` is defined, it will be called and it takes an test data loader as an argument
-        and iterate over it.
+        If ```model.test_run()``` is defined, it will be called and it is
+        expected to set and execute everything in the model.
         """
         self.model.eval()
         model = self._get_model()
-        test_outputs = None
-        try:
-            test_outputs = model.test_run(self.training_assets)
-        except NotImplementedError:
-            self.test_loader = self.get_eval_dataloader(
-                self.training_assets,
-                self.test_samples if self.test_samples else self.eval_samples,
-                verbose=True,
-            )
-            # use test_loader to load test samples
-            with suppress(NotImplementedError):
-                test_outputs = model.test(self.training_assets, self.test_loader, None)
         with suppress(NotImplementedError):
-            model.test_log(test_outputs, self.dashboard_logger, self.training_assets, self.total_steps_done)
+            test_outputs = model.test_run(self)
+            model.test_log(test_outputs, self.dashboard_logger, self.total_steps_done)
 
     def _restore_best_loss(self) -> None:
         """Restore the best loss.
@@ -1469,7 +1392,6 @@ class Trainer:
             scaler=self.scaler if self.use_amp_scaler else None,
             keep_all_best=self.config.save_all_best,
             keep_after=self.config.save_best_after,
-            save_func=self.dashboard_logger.save_model,
         )
 
     @rank_zero_only
@@ -1489,12 +1411,11 @@ class Trainer:
             scaler=self.scaler if self.use_amp_scaler else None,
             model_loss={"train_loss": train_loss, "eval_loss": eval_loss},
             save_n_checkpoints=self.config.save_n_checkpoints,
-            save_func=self.dashboard_logger.save_model,
         )
 
     @rank_zero_only
     def update_training_dashboard_logger(
-        self, batch: dict[str, Any] | list[Any] | None = None, outputs: dict[str, Any] | None = None
+        self, batch: dict[str, Any] | None = None, outputs: dict[str, Any] | None = None
     ) -> None:
         aliases = [
             f"epoch-{self.epochs_done}",
@@ -1512,7 +1433,6 @@ class Trainer:
                     batch,
                     outputs,
                     self.dashboard_logger,
-                    self.training_assets,
                     self.total_steps_done,
                 )
 
@@ -1520,8 +1440,7 @@ class Trainer:
     # GET FUNCTIONS
     #####################
 
-    @staticmethod
-    def get_optimizer(model: TrainerModel, config: TrainerConfig) -> ValueListDict[torch.optim.Optimizer]:
+    def get_optimizer(self) -> list[torch.optim.Optimizer]:
         """Return the optimizer.
 
         From the model if model implements `get_optimizer()` else
@@ -1532,26 +1451,27 @@ class Trainer:
             config (TrainerConfig): Training configuration.
 
         Returns:
-            Union[torch.optim.Optimizer, List]: A optimizer or a list of optimizers. GAN models define a list.
+            A list of one or more optimizers. GAN models define two.
         """
         try:
-            return model.get_optimizer()
+            optimizer = self.model.get_optimizer()
         except NotImplementedError as e:
-            if isinstance(config.optimizer, list):
-                optimizers = []
-                for i, optimizer_name in enumerate(config.optimizer):
-                    optimizer_params = {} if config.optimizer_params is None else config.optimizer_params[i]  # type: ignore[index]
-                    optimizers.append(get_optimizer(optimizer_name, optimizer_params, config.lr, model))  # type: ignore[arg-type]
-                return optimizers
-            if config.optimizer is None:
+            if self.config.optimizer is None:
                 msg = "No name specified in `optimizer`"
                 raise ValueError(msg) from e
-            optimizer_name = config.optimizer
-            optimizer_params = {} if config.optimizer_params is None else config.optimizer_params
-            return get_optimizer(optimizer_name, optimizer_params, config.lr, model)  # type: ignore[arg-type]
+            if isinstance(self.config.optimizer, list):
+                optimizers = []
+                for i, optimizer_name in enumerate(self.config.optimizer):
+                    optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params[i]  # type: ignore[index]
+                    optimizers.append(get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model))  # type: ignore[arg-type]
+                optimizer = optimizers
+            else:
+                optimizer_name = self.config.optimizer
+                optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params
+                optimizer = get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model)  # type: ignore[arg-type]
+        return optimizer if isinstance(optimizer, list) else [optimizer]
 
-    @staticmethod
-    def get_lr(model: TrainerModel, config: TrainerConfig) -> float | list[float] | dict[str, float]:
+    def get_lr(self) -> list[float]:
         """Set the initial learning rate.
 
         According to the model if model implements `get_lr()` else try setting
@@ -1562,19 +1482,21 @@ class Trainer:
             config (TrainerConfig): Training configuration.
 
         Returns:
-            Union[float, List[float]]: A single learning rate or a list of learning rates, one for each optimzier.
+            A list of learning rates, one for each optimzier.
         """
         try:
-            return model.get_lr()
+            lr = self.model.get_lr()
         except NotImplementedError:
-            return config.lr
+            lr = self.config.lr
+        lr_list = lr if isinstance(lr, list) else [lr]
+        if len(lr_list) == 1 and len(self.optimizer) > 1:
+            logger.warning(
+                "Single learning rate expanded to %i copies to match the number of optimizers.", len(self.optimizer)
+            )
+            lr_list = lr_list * len(self.optimizer)
+        return lr_list
 
-    @staticmethod
-    def get_scheduler(
-        model: TrainerModel,
-        config: TrainerConfig,
-        optimizer: torch.optim.Optimizer | list[torch.optim.Optimizer] | dict[str, torch.optim.Optimizer],
-    ) -> ValueListDict[LRScheduler] | None:
+    def get_scheduler(self) -> list[LRScheduler | None]:
         """Return the scheduler.
 
         From the model if model implements `get_scheduler()` else
@@ -1585,17 +1507,17 @@ class Trainer:
             config (TrainerConfig): Training configuration.
 
         Returns:
-            Union[torch.optim.Optimizer, List, Dict]: A scheduler or a list of schedulers, one for each optimizer.
+            A list of schedulers, one for each optimizer.
         """
         try:
-            return model.get_scheduler(optimizer)
+            scheduler = self.model.get_scheduler(self.optimizer)
         except NotImplementedError:
-            lr_scheduler = config.lr_scheduler
-            lr_scheduler_params = config.lr_scheduler_params
-            return get_scheduler(lr_scheduler, lr_scheduler_params, optimizer)  # type: ignore[arg-type]
+            lr_scheduler = self.config.lr_scheduler
+            lr_scheduler_params = self.config.lr_scheduler_params
+            scheduler = get_scheduler(lr_scheduler, lr_scheduler_params, self.optimizer[0])  # type: ignore[arg-type]
+        return scheduler if isinstance(scheduler, list) else [scheduler]
 
-    @staticmethod
-    def get_criterion(model: TrainerModel) -> nn.Module | list[nn.Module]:
+    def get_criterion(self) -> list[nn.Module]:
         """Receive the criterion from the model. Model must implement `get_criterion()`.
 
         Args:
@@ -1604,7 +1526,8 @@ class Trainer:
         Returns:
             nn.Module: Criterion layer.
         """
-        return model.get_criterion()
+        criterion = self.model.get_criterion()
+        return criterion if isinstance(criterion, list) else [criterion]
 
     ####################
     # HELPER FUNCTIONS
@@ -1644,7 +1567,7 @@ class Trainer:
             raise ValueError(msg)
 
         # take the average of loss_{optimizer_idx} as the target loss when there are multiple optimizers
-        if isinstance(self.optimizer, list):
+        if len(self.optimizer) > 1:
             target_avg_loss = 0.0
             for idx in range(len(self.optimizer)):
                 if f"avg_loss_{idx}" in keep_avg_target.avg_values:

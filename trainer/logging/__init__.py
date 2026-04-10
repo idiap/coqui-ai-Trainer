@@ -7,7 +7,7 @@ from trainer.logging.base_dash_logger import BaseDashboardLogger
 from trainer.logging.console_logger import ConsoleLogger
 from trainer.logging.dummy_logger import DummyLogger
 
-__all__ = ["ConsoleLogger", "DummyLogger"]
+__all__ = ["BaseDashboardLogger", "ConsoleLogger", "DummyLogger"]
 
 
 logger = logging.getLogger("trainer")
