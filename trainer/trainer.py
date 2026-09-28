@@ -25,13 +25,14 @@ from trainer.config import TrainerArgs, TrainerConfig
 from trainer.generic_utils import (
     KeepAverage,
     count_parameters,
+    empty_cache,
     get_experiment_folder_path,
     get_git_branch,
     is_pytorch_at_least_2_3,
     is_pytorch_at_least_2_4,
     remove_experiment_folder,
     set_partial_state_dict,
-    to_cuda,
+    to_device,
 )
 from trainer.io import (
     copy_model_files,
@@ -194,7 +195,7 @@ class Trainer:
         self._setup_logger_config(log_file)
 
         # setup training environment
-        self.use_cuda, self.num_gpus = self.setup_training_environment(args=args, config=config, gpu=gpu)
+        self.device, self.num_gpus = self.setup_training_environment(args=args, config=config, gpu=gpu)
 
         # init loggers
         self.dashboard_logger, self.c_logger = self.init_loggers(self.config, output_path, dashboard_logger, c_logger)
@@ -222,7 +223,7 @@ class Trainer:
         self.keep_avg_eval: KeepAverage | None = None
 
         self.use_amp_scaler = (
-            self.use_cuda
+            self.device.type == "cuda"
             if self.config.mixed_precision and self.config.precision == "fp16"
             else self.config.use_grad_scaler
         )
@@ -261,11 +262,10 @@ class Trainer:
                 self.config.distributed_url,
             )
 
-        if self.use_cuda:
-            self.model.cuda()
-            for criterion in self.criterion:
-                if isinstance(criterion, nn.Module):
-                    criterion.cuda()
+        self.model.to(self.device)
+        for criterion in self.criterion:
+            if isinstance(criterion, nn.Module):
+                criterion.to(self.device)
 
         # setup optimizer and scheduler
         self.optimizer = self.get_optimizer()
@@ -480,7 +480,9 @@ class Trainer:
         return config, new_fields
 
     @staticmethod
-    def setup_training_environment(args: TrainerArgs, config: TrainerConfig, gpu: int | None) -> tuple[bool, int]:
+    def setup_training_environment(
+        args: TrainerArgs, config: TrainerConfig, gpu: int | None
+    ) -> tuple[torch.device, int]:
         if platform.system() != "Windows":
             # https://github.com/pytorch/pytorch/issues/973
             import resource  # pylint:disable=import-outside-toplevel  # noqa: PLC0415
@@ -489,7 +491,7 @@ class Trainer:
             resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
         # set and initialize Pytorch runtime
-        use_cuda, num_gpus = setup_torch_training_env(
+        device, num_gpus = setup_torch_training_env(
             args=args,
             cudnn_enable=config.cudnn_enable,
             cudnn_deterministic=config.cudnn_deterministic,
@@ -501,7 +503,7 @@ class Trainer:
         )
 
         print_training_env(args, config)
-        return use_cuda, num_gpus
+        return device, num_gpus
 
     def restore_model(self) -> None:
         """Restore training from an old run.
@@ -551,7 +553,7 @@ class Trainer:
             self.reset_lr()
 
         logger.info(" > Model restored from step %i", checkpoint["step"])
-        torch.cuda.empty_cache()
+        empty_cache(self.device)
 
     def reset_lr(self) -> None:
         """Reset learning rate to default values."""
@@ -646,7 +648,7 @@ class Trainer:
         batch = self._get_model().format_batch(batch)
 
         for k, v in batch.items():
-            batch[k] = to_cuda(v)
+            batch[k] = to_device(v, self.device)
 
         return self._get_model().format_batch_on_device(batch)
 
@@ -688,10 +690,12 @@ class Trainer:
         return self._get_model().train_step(*input_args)
 
     def _get_autocast_args(self, *, mixed_precision: bool, precision: str) -> tuple[str, torch.dtype]:
-        device = "cpu"
-        dtype = torch.get_autocast_dtype("cpu") if is_pytorch_at_least_2_4() else torch.get_autocast_cpu_dtype()
-        if self.use_cuda:
-            device = "cuda"
+        device = self.device.type
+        if device == "cpu":
+            dtype = torch.get_autocast_dtype("cpu") if is_pytorch_at_least_2_4() else torch.get_autocast_cpu_dtype()
+            if mixed_precision:
+                dtype = torch.bfloat16
+        else:
             dtype = torch.float32
             if mixed_precision:
                 if precision == "fp16":
@@ -701,8 +705,6 @@ class Trainer:
                 else:
                     msg = f" ❗ Unknown precision {precision}"
                     raise ValueError(msg)
-        elif mixed_precision:
-            dtype = torch.bfloat16
         return device, dtype
 
     def detach_loss_dict(
@@ -1101,7 +1103,7 @@ class Trainer:
             self.dashboard_logger.train_epoch_stats(self.total_steps_done, epoch_stats)
             if self.config.model_param_stats:
                 self.dashboard_logger.model_weights(self.model, self.total_steps_done)
-        torch.cuda.empty_cache()
+        empty_cache(self.device)
 
     #######################
     # EVAL FUNCTIONS
@@ -1191,7 +1193,7 @@ class Trainer:
                     self.total_steps_done,
                 )
             self.dashboard_logger.eval_stats(self.total_steps_done, self.keep_avg_eval.avg_values)
-        torch.cuda.empty_cache()
+        empty_cache(self.device)
 
     ##################################
     # TESTING
@@ -1268,10 +1270,10 @@ class Trainer:
         bs = starting_batch_size
         while True:
             gc.collect()
-            torch.cuda.empty_cache()
+            empty_cache(self.device)
             try:
                 gc.collect()
-                torch.cuda.empty_cache()
+                empty_cache(self.device)
                 self.config.batch_size = bs
                 logger.info(" > current batch size: %i", self.config.batch_size)
                 self._fit()
@@ -1279,7 +1281,7 @@ class Trainer:
                 if bs > 1 and should_reduce_batch_size(exception):
                     bs //= 2
                     gc.collect()
-                    torch.cuda.empty_cache()
+                    empty_cache(self.device)
                 else:
                     raise
             except Exception as exception:  # pylint: disable=broad-except
@@ -1287,7 +1289,7 @@ class Trainer:
                 if bs > 1 and should_reduce_batch_size(exception):
                     bs //= 2
                     gc.collect()
-                    torch.cuda.empty_cache()
+                    empty_cache(self.device)
                 else:
                     raise
             else:

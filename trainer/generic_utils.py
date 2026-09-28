@@ -23,14 +23,27 @@ def is_pytorch_at_least_2_4() -> bool:
     return Version(torch.__version__) >= Version("2.4")
 
 
-def to_cuda(x: torch.Tensor) -> torch.Tensor:
-    if x is None:
-        return None
-    if torch.is_tensor(x):
-        x = x.contiguous()
-        if torch.cuda.is_available():
-            x = x.cuda(non_blocking=True)
-    return x
+def get_device() -> torch.device:
+    """Return the best available device for training.
+
+    Falls back to the CPU if no accelerator is available.
+    """
+    if torch.cuda.is_available():
+        return torch.device("cuda:0")
+    return torch.device("cpu")
+
+
+def to_device(x: Any, device: torch.device) -> Any:
+    """Move a tensor to the given device, leaving anything else untouched."""
+    if x is None or not torch.is_tensor(x):
+        return x
+    return x.contiguous().to(device, non_blocking=device.type == "cuda")
+
+
+def empty_cache(device: torch.device) -> None:
+    """Release cached memory held by the accelerator, if any."""
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
 
 
 def get_git_branch() -> str:
