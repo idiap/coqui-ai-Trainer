@@ -76,7 +76,7 @@ def setup_torch_training_env(
     # set_nvidia_flags
     # set the correct cuda visible devices (using pci order)
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    if "CUDA_VISIBLE_DEVICES" not in os.environ and gpu is not None:
+    if "CUDA_VISIBLE_DEVICES" not in os.environ and gpu is not None and torch.cuda.is_available():
         torch.cuda.set_device(gpu)
         num_gpus = 1
     else:
@@ -94,6 +94,8 @@ def setup_torch_training_env(
         np.random.seed(training_seed)
     torch.manual_seed(training_seed)
     torch.cuda.manual_seed(training_seed)
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(training_seed)
 
     # set torch backend flags.
     # set them true if they are already set true

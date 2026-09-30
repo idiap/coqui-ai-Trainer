@@ -1,5 +1,4 @@
 import copy
-import functools
 import gc
 import logging
 import os
@@ -28,6 +27,7 @@ from trainer.generic_utils import (
     empty_cache,
     get_experiment_folder_path,
     get_git_branch,
+    is_autocast_available,
     is_pytorch_at_least_2_3,
     is_pytorch_at_least_2_4,
     remove_experiment_folder,
@@ -59,10 +59,13 @@ from trainer.utils.distributed import (
 
 logger = logging.getLogger("trainer")
 
-if is_pytorch_at_least_2_3():
-    GradScaler = functools.partial(torch.GradScaler, device="cuda")
-else:
-    GradScaler = torch.cuda.amp.GradScaler  # type: ignore[assignment]
+
+def get_grad_scaler(device_type: str) -> "torch.GradScaler":
+    """Create a gradient scaler for the given device type."""
+    if is_pytorch_at_least_2_3():
+        return torch.GradScaler(device=device_type)
+    # Before 2.3 the scaler was CUDA-only.
+    return torch.cuda.amp.GradScaler()
 
 
 class Trainer:
@@ -223,7 +226,7 @@ class Trainer:
         self.keep_avg_eval: KeepAverage | None = None
 
         self.use_amp_scaler = (
-            self.device.type == "cuda"
+            self.device.type in {"cuda", "mps"}
             if self.config.mixed_precision and self.config.precision == "fp16"
             else self.config.use_grad_scaler
         )
@@ -297,7 +300,7 @@ class Trainer:
         self.callbacks.on_init_start(self)
 
         # init AMP
-        self.scaler = GradScaler() if self.use_amp_scaler else None
+        self.scaler = get_grad_scaler(self.device.type) if self.use_amp_scaler else None
 
         # restore model
         if self.args.restore_path:
@@ -501,6 +504,14 @@ class Trainer:
             allow_tf32=config.allow_tf32,
             gpu=gpu if args.gpu is None else args.gpu,
         )
+
+        if config.mixed_precision and not is_autocast_available(device.type):
+            logger.warning(
+                "Mixed precision is not available on %s with torch %s, training in float32 instead.",
+                device.type,
+                torch.__version__,
+            )
+            config.mixed_precision = False
 
         print_training_env(args, config)
         return device, num_gpus

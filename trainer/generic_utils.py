@@ -23,13 +23,25 @@ def is_pytorch_at_least_2_4() -> bool:
     return Version(torch.__version__) >= Version("2.4")
 
 
+def is_autocast_available(device_type: str) -> bool:
+    """Check whether autocast is supported for the given device type."""
+    if is_pytorch_at_least_2_4():
+        return torch.amp.is_autocast_available(device_type)
+    # torch.amp.is_autocast_available() was added in 2.4. Before that, only CUDA
+    # and CPU autocast existed.
+    return device_type in {"cuda", "cpu"}
+
+
 def get_device() -> torch.device:
     """Return the best available device for training.
 
-    Falls back to the CPU if no accelerator is available.
+    Prefers CUDA over Apple Silicon (MPS) and falls back to the CPU if no
+    accelerator is available.
     """
     if torch.cuda.is_available():
         return torch.device("cuda:0")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
     return torch.device("cpu")
 
 
@@ -44,6 +56,8 @@ def empty_cache(device: torch.device) -> None:
     """Release cached memory held by the accelerator, if any."""
     if device.type == "cuda":
         torch.cuda.empty_cache()
+    elif device.type == "mps":
+        torch.mps.empty_cache()
 
 
 def get_git_branch() -> str:
