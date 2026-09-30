@@ -32,6 +32,50 @@ jobs:
           name: coverage-data-${{ matrix.python-version }}-${{ matrix.uv-resolution }}
           path: .coverage.*
           if-no-files-found: ignore
+  test-macos:
+    # Hosted Apple Silicon runners expose a Metal device, so this covers MPS on
+    # real hardware. Single Python version: the matrix above covers versions.
+    runs-on: macos-15
+    strategy:
+      matrix:
+        python-version: ["3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup uv
+        uses: ./.github/actions/setup-uv
+      - name: Install
+        run: uv sync --all-extras --no-extra cuda --group test
+      - name: Check for a Metal device
+        # Fail loudly rather than let the MPS tests skip themselves into a green
+        # run if a future runner image stops passing the GPU through.
+        run: |
+          uv run --no-sync python - <<'PY'
+          import os
+          import sys
+
+          import torch
+
+          available = torch.backends.mps.is_available()
+          rows = [
+              "| check | value |",
+              "| --- | --- |",
+              f"| torch | `{torch.__version__}` |",
+              f"| mps.is_built() | `{torch.backends.mps.is_built()}` |",
+              f"| mps.is_available() | `{available}` |",
+              f"| autocast available | `{torch.amp.is_autocast_available('mps')}` |",
+          ]
+          if not available:
+              rows.append("")
+              rows.append("No Metal device: the MPS tests would skip instead of running.")
+          summary = "\n".join(rows)
+          print(summary)
+          if path := os.environ.get("GITHUB_STEP_SUMMARY"):
+              with open(path, "a") as f:
+                  f.write(summary + "\n")
+          sys.exit(0 if available else 1)
+          PY
+      - name: Unit tests
+        run: uv run --no-sync pytest tests -q
   coverage:
     if: always()
     needs: test
