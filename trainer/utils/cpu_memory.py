@@ -1,11 +1,11 @@
 def get_available_cpu_memory():
-    import psutil  # noqa: PLC0415
+    import psutil  # ruff: ignore[import-outside-top-level]
 
     this_process = psutil.Process()
     available_memory = psutil.virtual_memory().available
 
     try:
-        import resource  # noqa: PLC0415
+        import resource  # ruff: ignore[import-outside-top-level]
 
         _, hard_mem_limit = resource.getrlimit(resource.RLIMIT_AS)
         if hard_mem_limit != resource.RLIM_INFINITY:
@@ -19,7 +19,7 @@ def get_available_cpu_memory():
 
 def set_cpu_memory_limit(num_gigabytes):
     try:
-        import resource  # noqa: PLC0415
+        import resource  # ruff: ignore[import-outside-top-level]
 
         num_bytes = int(num_gigabytes * 2**30)
         _, hard_limit = resource.getrlimit(resource.RLIMIT_AS)

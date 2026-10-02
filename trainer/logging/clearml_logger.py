@@ -19,7 +19,6 @@ except ImportError as e:
 
 if TYPE_CHECKING:
     from clearml.logger import Logger
-    from clearml.task import Task
 
 
 class ClearMLLogger(BaseDashboardLogger):
@@ -59,8 +58,7 @@ class ClearMLLogger(BaseDashboardLogger):
 
     def model_weights(self, model: torch.nn.Module, step: int) -> None:
         """Log model weights to ClearML."""
-        layer_num = 1
-        for name, param in model.named_parameters():
+        for layer_num, (name, param) in enumerate(model.named_parameters(), start=1):
             if param.numel() == 1:
                 self.logger.report_scalar(f"layer{layer_num}-{name}", "value", param.item(), step)
             else:
@@ -81,7 +79,6 @@ class ClearMLLogger(BaseDashboardLogger):
                         iteration=step,
                         values=param.grad.detach().tolist(),
                     )
-            layer_num += 1
 
     def add_scalar(self, title: str, value: float, step: int) -> None:
         """Log a scalar value to ClearML."""

@@ -6,7 +6,6 @@ import platform
 import shutil
 import sys
 import time
-import traceback
 from collections.abc import Generator
 from contextlib import nullcontext, suppress
 from pathlib import Path
@@ -385,19 +384,19 @@ class Trainer:
         """Setup HF Accelerate for the training."""
         # check if accelerate is installed
         try:
-            from accelerate import Accelerator  # noqa: PLC0415
+            from accelerate import Accelerator  # ruff: ignore[import-outside-top-level]
         except ImportError as e:
             msg = "Please install accelerate to use this feature."
             raise ImportError(msg) from e
 
-        _precision = precision if precision is not None else "f16" if mixed_precision else None
-        if _precision == "float16":
-            _precision = "f16"
-        elif _precision == "float8":
-            _precision = "f8"
-        elif _precision == "bfloat16":
-            _precision = "bf16"
-        accelerator = Accelerator(gradient_accumulation_steps=grad_accum_steps, mixed_precision=_precision)
+        precision_ = precision if precision is not None else "f16" if mixed_precision else None
+        if precision_ == "float16":
+            precision_ = "f16"
+        elif precision_ == "float8":
+            precision_ = "f8"
+        elif precision_ == "bfloat16":
+            precision_ = "bf16"
+        accelerator = Accelerator(gradient_accumulation_steps=grad_accum_steps, mixed_precision=precision_)
         if isinstance(model, nn.Module):
             model = accelerator.prepare_model(model)
 
@@ -508,7 +507,7 @@ class Trainer:
     ) -> tuple[torch.device, int]:
         if platform.system() != "Windows":
             # https://github.com/pytorch/pytorch/issues/973
-            import resource  # pylint:disable=import-outside-toplevel  # noqa: PLC0415
+            import resource  # pylint:disable=import-outside-toplevel  # ruff: ignore[import-outside-top-level]
 
             rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
             resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -552,7 +551,7 @@ class Trainer:
         logger.info(" > %s from %s ...", verb, os.path.basename(self.args.restore_path))
         checkpoint = load_fsspec(self.args.restore_path, map_location="cpu")
 
-        try:
+        try:  # ruff: ignore[too-many-statements-in-try-clause]
             logger.info(" > Restoring Model...")
             self.model.load_state_dict(checkpoint["model"])
             if self.continue_run:
@@ -597,7 +596,7 @@ class Trainer:
     # DATA LOADING FUNCTIONS
     #########################
 
-    def _get_loader(
+    def _get_loader(  # ruff: ignore[no-self-use]
         self,
         model: TrainerModel,
         config: TrainerConfig,
@@ -868,7 +867,7 @@ class Trainer:
         self.callbacks.before_backward_pass(self, loss_dict)
 
         # accumulated gradients adjustment
-        loss_dict["loss"] = loss_dict["loss"] / float(self.grad_accum_steps)
+        loss_dict["loss"] /= float(self.grad_accum_steps)
 
         if self.use_accelerate:
             with self.accelerator.accumulate(self.model):
@@ -969,7 +968,7 @@ class Trainer:
         loss_dict.update(lrs)
 
         # OPTIMIZATION
-        try:
+        try:  # ruff: ignore[too-many-statements-in-try-clause,too-many-nested-blocks]
             # custom optimize for the model
             step_time = time.time()
             device, dtype = self._get_autocast_args(
@@ -1310,7 +1309,7 @@ class Trainer:
                 epoch,
                 self.keep_avg_eval.avg_values if self.config.run_eval else self.keep_avg_train.avg_values,  # type: ignore[union-attr]
             )
-            if self.args.rank in [None, 0]:
+            if self.args.rank in {None, 0}:
                 self.save_best_model()
             self.callbacks.on_epoch_end(self)
             self.start_with_eval = False
@@ -1373,12 +1372,11 @@ class Trainer:
             try:
                 sys.exit(130)
             except SystemExit:
-                os._exit(130)  # pylint: disable=protected-access
-        except BaseException:  # pylint: disable=broad-except
+                os._exit(130)
+        except BaseException:
             self._close_log_file()
             remove_experiment_folder(self.output_path)
-            traceback.print_exc()
-            sys.exit(1)
+            raise
 
     def profile_fit(
         self, torch_profiler: torch.profiler.profile, epochs: int | None = None, small_run: int | None = None
@@ -1548,7 +1546,7 @@ class Trainer:
             logger.warning(
                 "Single learning rate expanded to %i copies to match the number of optimizers.", len(self.optimizer)
             )
-            lr_list = lr_list * len(self.optimizer)
+            lr_list *= len(self.optimizer)
         return lr_list
 
     def get_scheduler(self) -> list[LRScheduler | None]:

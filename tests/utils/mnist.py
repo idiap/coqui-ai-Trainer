@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import MNIST
+from typing_extensions import override
 
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
 from trainer.generic_utils import KeepAverage
@@ -61,9 +62,11 @@ class MnistModel(TrainerModel):
         loss = criterion(logits, batch["target"])
         return {"model_outputs": logits}, {"loss": loss}
 
+    @override
     def get_criterion(self) -> nn.Module:
         return torch.nn.NLLLoss()
 
+    @override
     def get_data_loader(
         self, config: TrainerConfig, *, is_eval: bool = False, samples: list[Any], verbose: bool = False
     ):

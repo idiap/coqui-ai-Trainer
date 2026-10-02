@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from typing_extensions import override
 
 from tests.utils.mnist import get_mnist_samples
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
@@ -126,9 +127,11 @@ class GANModel(TrainerModel):
         generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
         return [discriminator_optimizer, generator_optimizer]
 
+    @override
     def get_criterion(self) -> list[nn.Module]:
         return [nn.BCELoss(), nn.BCELoss()]
 
+    @override
     def get_data_loader(
         self,
         config: TrainerConfig,

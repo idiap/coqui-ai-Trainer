@@ -43,8 +43,7 @@ class AimLogger(BaseDashboardLogger):
         self._context = context
 
     def model_weights(self, model: torch.nn.Module, step: int) -> None:
-        layer_num = 1
-        for name, param in model.named_parameters():
+        for layer_num, (name, param) in enumerate(model.named_parameters(), start=1):
             if param.numel() == 1:
                 self.run.track(param.max(), name=f"layer{layer_num}-{name}/value", step=step)
             else:
@@ -55,7 +54,6 @@ class AimLogger(BaseDashboardLogger):
                 self.run.track(aim.Distribution(param.detach()), name=f"layer{layer_num}-{name}/param", step=step)
                 if param.grad is not None:
                     self.run.track(aim.Distribution(param.grad), name=f"layer{layer_num}-{name}/grad", step=step)
-            layer_num += 1
 
     def add_scalar(self, title: str, value: float, step: int) -> None:
         if torch.is_tensor(value):

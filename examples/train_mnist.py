@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import MNIST
+from typing_extensions import override
 
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
 
@@ -58,10 +59,11 @@ class MnistModel(TrainerModel):
         loss = criterion(logits, y)
         return {"model_outputs": logits}, {"loss": loss}
 
-    @staticmethod
-    def get_criterion():
+    @override
+    def get_criterion(self):
         return torch.nn.NLLLoss()
 
+    @override
     def get_data_loader(self, config, *, is_eval, samples, verbose=False):
         return DataLoader(samples, batch_size=config.batch_size)
 

@@ -48,8 +48,7 @@ class MLFlowLogger(BaseDashboardLogger):
         self.run_id = run.info.run_id
 
     def model_weights(self, model: torch.nn.Module, step: int) -> None:
-        layer_num = 1
-        for name, param in model.named_parameters():
+        for layer_num, (name, param) in enumerate(model.named_parameters(), start=1):
             if param.numel() == 1:
                 self.client.log_metric(self.run_id, f"layer{layer_num}-{name}/value", param.max().item(), step=step)
             else:
@@ -60,7 +59,6 @@ class MLFlowLogger(BaseDashboardLogger):
                 # MlFlow does not support histograms
                 # self.client.add_histogram("layer{}-{}/param".format(layer_num, name), param, step)
                 # self.client.add_histogram("layer{}-{}/grad".format(layer_num, name), param.grad, step)
-            layer_num += 1
 
     def add_scalar(self, title: str, value: float, step: int) -> None:
         if torch.is_tensor(value):

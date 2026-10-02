@@ -14,8 +14,7 @@ class TensorboardLogger(BaseDashboardLogger):
         self.writer = SummaryWriter(log_dir)
 
     def model_weights(self, model: torch.nn.Module, step: int) -> None:
-        layer_num = 1
-        for name, param in model.named_parameters():
+        for layer_num, (name, param) in enumerate(model.named_parameters(), start=1):
             if param.numel() == 1:
                 self.writer.add_scalar(f"layer{layer_num}-{name}/value", param.max(), step)
             else:
@@ -26,7 +25,6 @@ class TensorboardLogger(BaseDashboardLogger):
                 self.writer.add_histogram(f"layer{layer_num}-{name}/param", param, step)
                 if param.grad is not None:
                     self.writer.add_histogram(f"layer{layer_num}-{name}/grad", param.grad, step)
-            layer_num += 1
 
     def add_scalar(self, title: str, value: float, step: int) -> None:
         self.writer.add_scalar(title, value, step)

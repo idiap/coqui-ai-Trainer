@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 from torch.utils.data import DataLoader
+from typing_extensions import override
 
 from tests.utils.mnist import MnistModel, MnistModelConfig, get_mnist_samples
 from trainer import Trainer, TrainerArgs
@@ -99,7 +100,7 @@ def test_failed_run_is_removed(tmp_path, monkeypatch):
         raise RuntimeError(msg)
 
     monkeypatch.setattr(trainer, "_fit", fail)
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError, match="boom"):
         trainer.fit()
 
     # the log file must be closed, otherwise the folder can't be removed on Windows
@@ -185,6 +186,7 @@ def test_eval_samples_required_when_run_eval_enabled(tmp_path):
 
 def test_empty_dataloader_raises_valueerror(tmp_path):
     class EmptyLoaderModel(MnistModel):
+        @override
         def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
             return DataLoader([])  # type: ignore[arg-type]
 

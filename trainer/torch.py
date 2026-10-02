@@ -7,7 +7,7 @@ from torch.utils.data.distributed import DistributedSampler
 from trainer.generic_utils import is_pytorch_at_least_2_4
 
 if is_pytorch_at_least_2_4():
-    from torch.optim.lr_scheduler import _warn_get_lr_called_within_step
+    from torch.optim.lr_scheduler import _warn_get_lr_called_within_step  # ruff: ignore[import-private-name]
 
 
 class DistributedSamplerWrapper(DistributedSampler):
