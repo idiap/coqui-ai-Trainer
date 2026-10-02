@@ -50,7 +50,7 @@ def rank_zero_logger_info(message: str, logger: logging.Logger, *args, **kwargs)
 
 def reduce_tensor(tensor: torch.Tensor, num_gpus: int) -> torch.Tensor:
     rt = tensor.clone()
-    dist.all_reduce(rt, op=dist.reduce_op.SUM)
+    dist.all_reduce(rt, op=dist.ReduceOp.SUM)
     rt /= num_gpus
     return rt
 

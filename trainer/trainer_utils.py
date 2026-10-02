@@ -10,6 +10,7 @@ import torch
 from torch.nn import Parameter
 
 from trainer.config import TrainerArgs, TrainerConfig
+from trainer.generic_utils import get_device
 from trainer.logger import logger
 from trainer.torch import NoamLR, StepwiseGradualLR
 from trainer.utils.distributed import rank_zero_logger_info
@@ -54,7 +55,7 @@ def setup_torch_training_env(
     training_seed: int = 54321,
     allow_tf32: bool = False,
     gpu: int | None = None,
-) -> tuple[bool, int]:
+) -> tuple[torch.device, int]:
     """Setup PyTorch environment for training.
 
     Args:
@@ -67,7 +68,7 @@ def setup_torch_training_env(
         torch_seed (int): Seed for torch random number generator.
 
     Returns:
-        Tuple[bool, int]: is cuda on or off and number of GPUs in the environment.
+        The device to train on and the number of GPUs in the environment.
     """
     # clear cache before training
     torch.cuda.empty_cache()
@@ -75,7 +76,7 @@ def setup_torch_training_env(
     # set_nvidia_flags
     # set the correct cuda visible devices (using pci order)
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    if "CUDA_VISIBLE_DEVICES" not in os.environ and gpu is not None:
+    if "CUDA_VISIBLE_DEVICES" not in os.environ and gpu is not None and torch.cuda.is_available():
         torch.cuda.set_device(gpu)
         num_gpus = 1
     else:
@@ -93,6 +94,8 @@ def setup_torch_training_env(
         np.random.seed(training_seed)
     torch.manual_seed(training_seed)
     torch.cuda.manual_seed(training_seed)
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(training_seed)
 
     # set torch backend flags.
     # set them true if they are already set true
@@ -101,8 +104,7 @@ def setup_torch_training_env(
     torch.backends.cudnn.benchmark = cudnn_benchmark or torch.backends.cudnn.benchmark
     torch.backends.cuda.matmul.allow_tf32 = allow_tf32 or torch.backends.cuda.matmul.allow_tf32
 
-    use_cuda = torch.cuda.is_available()
-    return use_cuda, num_gpus
+    return get_device(), num_gpus
 
 
 def get_scheduler(
