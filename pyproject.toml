@@ -29,7 +29,7 @@ name = "coqui-tts-trainer"
 version = "0.4.0"
 description = "General purpose model trainer for PyTorch that is more flexible than it should be, by 🐸Coqui."
 readme = "README.md"
-requires-python = ">=3.10, <3.15"
+requires-python = ">=3.11, <3.15"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Eren Gölge", email = "egolge@coqui.ai"}
@@ -47,7 +47,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
