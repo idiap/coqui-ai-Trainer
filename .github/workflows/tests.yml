@@ -18,7 +18,7 @@ jobs:
           - python-version: "3.11"
             uv-resolution: "lowest-direct"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Unit tests
@@ -26,7 +26,7 @@ jobs:
           uv run --resolution=${{ matrix.uv-resolution }}
           --all-extras --no-extra cuda --group test coverage run --parallel
       - name: Upload coverage data
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           include-hidden-files: true
           name: coverage-data-${{ matrix.python-version }}-${{ matrix.uv-resolution }}
@@ -40,7 +40,7 @@ jobs:
       matrix:
         python-version: ["3.13"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Install
@@ -82,7 +82,7 @@ jobs:
       matrix:
         python-version: ["3.13"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Install
@@ -94,10 +94,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup uv
         uses: ./.github/actions/setup-uv
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           pattern: coverage-data-*
           merge-multiple: true

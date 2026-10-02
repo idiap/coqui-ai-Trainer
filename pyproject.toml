@@ -77,9 +77,9 @@ wandb = ["wandb>=0.19"]
 [dependency-groups]
 dev = [
     "coverage>=7",
-    "pre-commit>=3",
-    "pytest>=8",
-    "ruff==0.14.7",
+    "pre-commit>=4",
+    "pytest>=9",
+    "ruff==0.17.1",
 ]
 test = [
     "accelerate>=1.0.0",
@@ -88,7 +88,7 @@ test = [
     "torchvision>=0.17.0",
 ]
 mypy = [
-    "mypy==1.19.1",
+    "mypy==2.4.0",
     "types-psutil>=7.0.0.20250218",
 ]
 
@@ -145,6 +145,7 @@ packages = ["trainer"]
 
 [tool.ruff]
 line-length = 120
+lint.preview = true
 lint.extend-select = [
     "ANN204", # type hints
     "B",      # bugbear
