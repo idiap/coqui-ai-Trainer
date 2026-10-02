@@ -6,7 +6,6 @@ import platform
 import shutil
 import sys
 import time
-import traceback
 from collections.abc import Generator
 from contextlib import nullcontext, suppress
 from pathlib import Path
@@ -1334,11 +1333,10 @@ class Trainer:
             try:
                 sys.exit(130)
             except SystemExit:
-                os._exit(130)  # pylint: disable=protected-access
-        except BaseException:  # pylint: disable=broad-except
+                os._exit(130)
+        except BaseException:
             remove_experiment_folder(self.output_path)
-            traceback.print_exc()
-            sys.exit(1)
+            raise
 
     def profile_fit(
         self, torch_profiler: torch.profiler.profile, epochs: int | None = None, small_run: int | None = None

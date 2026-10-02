@@ -40,8 +40,7 @@ class ConsoleLogger:
 
     @staticmethod
     def get_time() -> str:
-        now = datetime.datetime.now()
-        return now.strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
     @rank_zero_only
     def print_epoch_start(self, epoch: int, max_epoch: int, output_path: str | os.PathLike[Any] | None = None) -> None:

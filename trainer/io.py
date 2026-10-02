@@ -133,7 +133,7 @@ def save_model(
         "scaler": scaler_state,
         "step": current_step,
         "epoch": epoch,
-        "date": datetime.date.today().strftime("%B %d, %Y"),
+        "date": datetime.datetime.now().astimezone().date().strftime("%B %d, %Y"),
     }
     state.update(kwargs)
     save_fsspec(state, output_path)
