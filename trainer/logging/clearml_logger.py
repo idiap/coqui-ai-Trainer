@@ -19,7 +19,6 @@ except ImportError as e:
 
 if TYPE_CHECKING:
     from clearml.logger import Logger
-    from clearml.task import Task
 
 
 class ClearMLLogger(BaseDashboardLogger):
