@@ -100,8 +100,11 @@ def remove_experiment_folder(experiment_path: str | os.PathLike[Any]) -> None:
     checkpoint_files = fs.glob(os.path.join(experiment_path, "*.pth"))
     if not checkpoint_files:
         if fs.exists(experiment_path):
-            fs.rm(experiment_path, recursive=True)
-            logger.info(" ! Run is removed from %s", experiment_path)
+            try:
+                fs.rm(experiment_path, recursive=True)
+                logger.info(" ! Run is removed from %s", experiment_path)
+            except OSError as e:
+                logger.warning(" ! Failed to remove run folder from %s: %s", experiment_path, e)
     else:
         logger.info(" ! Run is kept in %s", experiment_path)
 

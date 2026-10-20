@@ -1322,6 +1322,8 @@ class Trainer:
                 self.update_training_dashboard_logger()
             # call the keyboard interrupt callback
             self.callbacks.on_keyboard_interrupt(self)
+            # release file logger handles before removing experiment folder
+            self._close_log_file()
             # if the output folder is empty remove the run.
             remove_experiment_folder(self.output_path)
             # clear the DDP processes
@@ -1336,6 +1338,7 @@ class Trainer:
             except SystemExit:
                 os._exit(130)  # pylint: disable=protected-access
         except BaseException:  # pylint: disable=broad-except
+            self._close_log_file()
             remove_experiment_folder(self.output_path)
             traceback.print_exc()
             sys.exit(1)
@@ -1597,7 +1600,15 @@ class Trainer:
         fmt = logging.Formatter("")
         handler.setFormatter(fmt)
         logger_new.addHandler(handler)
+        self._log_handler: logging.FileHandler | None = handler
 
         # only log to a file if rank > 0 in DDP
         if self.args.rank > 0:
             logger_new.handlers = [h for h in logger_new.handlers if not isinstance(h, logging.StreamHandler)]
+
+    def _close_log_file(self) -> None:
+        """Detach and close this trainer's log file handler."""
+        if self._log_handler is not None:
+            logging.getLogger("trainer").removeHandler(self._log_handler)
+            self._log_handler.close()
+            self._log_handler = None
