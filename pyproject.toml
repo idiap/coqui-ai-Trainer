@@ -84,10 +84,10 @@ dev = [
     "ty==0.0.90",
 ]
 test = [
-    "accelerate>=1.0.0",
+    "accelerate>=1.0.0; python_version < '3.15'",  # no torch cp315 wheels on PyPI yet
     "matplotlib>=3.10.5",
     "numpy>=1.25.2",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0; python_version < '3.15'",  # no torch cp315 wheels on PyPI yet
 ]
 
 [tool.uv]
@@ -118,7 +118,7 @@ explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu128"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [project.urls]
