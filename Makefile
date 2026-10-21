@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: test dev-deps deps style lint mypy install help
+.PHONY: test dev-deps deps style lint typecheck install help
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -19,11 +19,10 @@ style:	## update code style.
 	uv run --only-dev ruff format ${target_dirs}
 
 lint:	## run linter.
-	uv run --only-dev ruff check ${target_dirs}
-	uv run --only-dev ruff format --check ${target_dirs}
+	uv run prek run --all-files
 
-mypy:	## run type checker.
-	uv run --all-extras --no-extra cuda --group mypy mypy trainer
+typecheck:	## run type checker.
+	uv run --all-extras --no-extra cuda --group test ty check
 
 install:	## install 🐸 Trainer for development.
 	uv sync --all-extras --no-extra cuda

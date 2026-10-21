@@ -81,16 +81,13 @@ dev = [
     "prek>=0.5",
     "pytest>=9",
     "ruff==0.17.1",
+    "ty==0.0.90",
 ]
 test = [
     "accelerate>=1.0.0",
     "matplotlib>=3.10.5",
     "numpy>=1.25.2",
     "torchvision>=0.17.0",
-]
-mypy = [
-    "mypy==2.4.0",
-    "types-psutil>=7.0.0.20250218",
 ]
 
 [tool.uv]
@@ -192,14 +189,13 @@ skip_empty = true
 source = ["trainer", "tests"]
 command_line = "-m pytest"
 
-[tool.mypy]
-warn_unused_configs = true
-disallow_subclassing_any = true
-disallow_untyped_decorators = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-strict_equality = true
-extra_checks = true
+[tool.ty.analysis]
+allowed-unresolved-imports = ["aim", "aim.**", "plotly", "plotly.**"]
+
+[tool.ty.rules]
+# Flags every nn.Module.forward() override (torch declares it as a Callable attribute)
+# and coqpit config subclasses narrowing field types.
+invalid-mutable-override = "ignore"
 
 [[tool.mypy.overrides]]
 module = [
