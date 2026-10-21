@@ -161,11 +161,13 @@ def test_overfit_mnist_simple_gan(tmp_path):
 
     trainer.config.epochs = 1
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss_d1 = trainer.keep_avg_train["avg_loss_0"]
     loss_g1 = trainer.keep_avg_train["avg_loss_1"]
 
     trainer.config.epochs = 5
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss_d2 = trainer.keep_avg_train["avg_loss_0"]
     loss_g2 = trainer.keep_avg_train["avg_loss_1"]
 
@@ -193,11 +195,13 @@ def test_overfit_accelerate_mnist_simple_gan(tmp_path):
     )
 
     trainer.eval_epoch()
+    assert trainer.keep_avg_eval is not None
     loss_d1 = trainer.keep_avg_eval["avg_loss_0"]
     loss_g1 = trainer.keep_avg_eval["avg_loss_1"]
 
     trainer.config.epochs = 5
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss_d2 = trainer.keep_avg_train["avg_loss_0"]
     loss_g2 = trainer.keep_avg_train["avg_loss_1"]
 

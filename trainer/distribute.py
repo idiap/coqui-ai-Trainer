@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import pathlib
 import subprocess
@@ -58,7 +59,7 @@ def distribute() -> None:
         p.wait()
 
 
-def get_gpus(args):
+def get_gpus(args: argparse.Namespace) -> list[str]:
     # set active gpus from CUDA_VISIBLE_DEVICES or --gpus
     gpus = os.environ.get("CUDA_VISIBLE_DEVICES") or args.gpus
     return list(map(str.strip, gpus.split(",")))

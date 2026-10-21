@@ -1,4 +1,4 @@
-def get_available_cpu_memory():
+def get_available_cpu_memory() -> int:
     import psutil  # ruff: ignore[import-outside-top-level]
 
     this_process = psutil.Process()
@@ -17,7 +17,7 @@ def get_available_cpu_memory():
     return available_memory
 
 
-def set_cpu_memory_limit(num_gigabytes):
+def set_cpu_memory_limit(num_gigabytes: float) -> None:
     try:
         import resource  # ruff: ignore[import-outside-top-level]
 

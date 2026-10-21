@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -30,9 +31,11 @@ def test_train_mnist(tmp_path):
     )
 
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss1 = trainer.keep_avg_train["avg_loss"]
 
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss2 = trainer.keep_avg_train["avg_loss"]
 
     assert loss1 > loss2
@@ -52,9 +55,10 @@ def test_train_mnist(tmp_path):
         eval_samples=eval_samples,
     )
     trainer2.fit()
+    assert trainer2.keep_avg_train is not None
     loss3 = trainer2.keep_avg_train["avg_loss"]
 
-    args.continue_path = str(max(tmp_path.iterdir(), key=lambda p: p.stat().st_mtime))
+    args.continue_path = str(max(tmp_path.iterdir(), key=os.path.getmtime))
 
     trainer3 = Trainer(
         args,
@@ -67,6 +71,7 @@ def test_train_mnist(tmp_path):
         eval_samples=eval_samples,
     )
     trainer3.fit()
+    assert trainer3.keep_avg_train is not None
     loss4 = trainer3.keep_avg_train["avg_loss"]
 
     assert loss3 > loss4
@@ -93,6 +98,7 @@ def test_failed_run_is_removed(tmp_path, monkeypatch):
         parse_command_line_args=False,
     )
     handler = trainer._log_handler
+    assert handler is not None
     assert (trainer.output_path / "trainer_0_log.txt").is_file()
 
     def fail():

@@ -47,13 +47,13 @@ class MnistModel(TrainerModel):
 
         return F.log_softmax(x, dim=1)
 
-    def train_step(self, batch, criterion):
+    def train_step(self, batch, criterion, optimizer_idx=None):
         x, y = batch
         logits = self(x)
         loss = criterion(logits, y)
         return {"model_outputs": logits}, {"loss": loss}
 
-    def eval_step(self, batch, criterion):
+    def eval_step(self, batch, criterion, optimizer_idx=None):
         x, y = batch
         logits = self(x)
         loss = criterion(logits, y)
@@ -64,7 +64,7 @@ class MnistModel(TrainerModel):
         return torch.nn.NLLLoss()
 
     @override
-    def get_data_loader(self, config, *, is_eval, samples, verbose=False):
+    def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
         return DataLoader(samples, batch_size=config.batch_size)
 
 

@@ -1,7 +1,9 @@
 from bisect import bisect_right
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from typing import Any, cast
 
 import torch
+from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
 from trainer.generic_utils import is_pytorch_at_least_2_4
@@ -10,7 +12,7 @@ if is_pytorch_at_least_2_4():
     from torch.optim.lr_scheduler import _warn_get_lr_called_within_step  # ruff: ignore[import-private-name]
 
 
-class DistributedSamplerWrapper(DistributedSampler):
+class DistributedSamplerWrapper(DistributedSampler[Any]):
     """Wrapper over Sampler for distributed training.
 
     It allows you to use any sampler in distributed mode.
@@ -35,9 +37,11 @@ class DistributedSamplerWrapper(DistributedSampler):
 
     """
 
+    dataset: Any  # the wrapped sampler, used duck-typed
+
     def __init__(
         self,
-        sampler,
+        sampler: Sampler[Any],
         *,
         num_replicas: int | None = None,
         rank: int | None = None,
@@ -45,15 +49,15 @@ class DistributedSamplerWrapper(DistributedSampler):
         seed: int = 0,
     ) -> None:
         super().__init__(
-            sampler,
+            cast("Dataset[Any]", sampler),
             num_replicas=num_replicas,
             rank=rank,
             shuffle=shuffle,
             seed=seed,
         )
 
-    def __iter__(self) -> Iterator:
-        indices = list(self.dataset)[: self.total_size]  # type: ignore[call-overload]
+    def __iter__(self) -> Iterator[Any]:
+        indices = list(self.dataset)[: self.total_size]
 
         # Add extra samples to make it evenly divisible
         indices += indices[: (self.total_size - len(indices))]
@@ -73,11 +77,11 @@ class DistributedSamplerWrapper(DistributedSampler):
         elif hasattr(self.dataset, "generator"):
             self.dataset.generator = torch.Generator().manual_seed(self.seed + epoch)
 
-    def state_dict(self) -> dict:
-        return self.dataset.state_dict()  # type: ignore[attr-defined]
+    def state_dict(self) -> dict[str, Any]:
+        return cast("dict[str, Any]", self.dataset.state_dict())
 
-    def load_state_dict(self, state_dict: dict) -> None:
-        self.dataset.load_state_dict(state_dict)  # type: ignore[attr-defined]
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        self.dataset.load_state_dict(state_dict)
 
 
 # pylint: disable=protected-access
@@ -104,7 +108,12 @@ class StepwiseGradualLR(torch.optim.lr_scheduler._LRScheduler):
     Necessary for CapacitronVAE.
     """
 
-    def __init__(self, optimizer: torch.optim.Optimizer, gradual_learning_rates, last_epoch: int = -1) -> None:
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        gradual_learning_rates: Iterable[tuple[int, float]],
+        last_epoch: int = -1,
+    ) -> None:
         self.step_thresholds, self.learning_rates = zip(*gradual_learning_rates, strict=True)
         super().__init__(optimizer, last_epoch)
 

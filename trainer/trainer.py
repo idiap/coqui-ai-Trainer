@@ -64,7 +64,7 @@ def get_grad_scaler(device_type: str) -> "torch.GradScaler":
     if is_pytorch_at_least_2_3():
         return torch.GradScaler(device=device_type)
     # Before 2.3 the scaler was CUDA-only.
-    return torch.cuda.amp.GradScaler()
+    return torch.cuda.amp.GradScaler()  # ty: ignore[deprecated]
 
 
 class Trainer:
@@ -367,7 +367,7 @@ class Trainer:
     def prepare_accelerate_loader(self, data_loader: DataLoader[Any]) -> DataLoader[Any]:
         """Prepare the accelerator for the training."""
         if self.use_accelerate:
-            return self.accelerator.prepare_data_loader(data_loader)
+            return cast("DataLoader[Any]", self.accelerator.prepare_data_loader(data_loader))
         return data_loader
 
     @staticmethod
@@ -380,7 +380,7 @@ class Trainer:
         grad_accum_steps: int,
         mixed_precision: bool,
         precision: str,
-    ) -> tuple:
+    ) -> tuple[TrainerModel, list[torch.optim.Optimizer], DataLoader[Any] | None, list[LRScheduler | None], Any]:
         """Setup HF Accelerate for the training."""
         # check if accelerate is installed
         try:
@@ -802,7 +802,10 @@ class Trainer:
         return grad_clip
 
     def _compute_grad_norm(self, optimizer: torch.optim.Optimizer) -> torch.Tensor:
-        return torch.norm(torch.cat([param.grad.view(-1) for param in self.master_params(optimizer)], dim=0), p=2)
+        return cast(
+            "torch.Tensor",
+            torch.norm(torch.cat([param.grad.view(-1) for param in self.master_params(optimizer)], dim=0), p=2),
+        )
 
     def _grad_clipping(
         self, grad_clip: float, optimizer: torch.optim.Optimizer, scaler: Optional["torch.GradScaler"]
@@ -1305,10 +1308,8 @@ class Trainer:
             if epoch >= self.config.test_delay_epochs and self.args.rank <= 0:
                 self.test_run()
 
-            self.c_logger.print_epoch_end(
-                epoch,
-                self.keep_avg_eval.avg_values if self.config.run_eval else self.keep_avg_train.avg_values,  # type: ignore[union-attr]
-            )
+            keep_avg = self.keep_avg_eval if self.config.run_eval else self.keep_avg_train
+            self.c_logger.print_epoch_end(epoch, keep_avg.avg_values if keep_avg is not None else {})
             if self.args.rank in {None, 0}:
                 self.save_best_model()
             self.callbacks.on_epoch_end(self)

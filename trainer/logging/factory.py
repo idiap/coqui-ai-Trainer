@@ -48,7 +48,7 @@ def logger_factory(config: TrainerConfig, output_path: str | os.PathLike[Any]) -
         dashboard_logger = ClearMLLogger(
             output_uri=log_uri,
             local_path=output_path,
-            project_name=project_name,  # type: ignore[arg-type]
+            project_name=project_name,
             task_name=run_name,
         )
 

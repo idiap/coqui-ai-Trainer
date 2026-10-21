@@ -36,7 +36,7 @@ class ClearMLLogger(BaseDashboardLogger):
         self,
         output_uri: str | os.PathLike[Any],
         local_path: str | os.PathLike[Any],
-        project_name: str,
+        project_name: str | None,
         task_name: str,
         tags: str | None = None,
     ) -> None:
@@ -48,10 +48,6 @@ class ClearMLLogger(BaseDashboardLogger):
         self.run: Task = Task.init(
             project_name=project_name, task_name=task_name, tags=self.tags, output_uri=str(output_uri)
         )
-
-        if tags:
-            for tag in tags.split(","):
-                self.run.add_tag(tag)
 
         # Get the logger for scalars, plots, etc.
         self.logger: Logger = self.run.get_logger()

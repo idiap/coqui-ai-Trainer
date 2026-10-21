@@ -126,7 +126,7 @@ class GANModel(TrainerModel):
         return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
 
     @torch.inference_mode()
-    def eval_step(self, batch, criterion):
+    def eval_step(self, batch, criterion, optimizer_idx=None):
         imgs, _ = batch
 
         # sample noise
@@ -151,7 +151,7 @@ class GANModel(TrainerModel):
         return nn.BCELoss()
 
     @override
-    def get_data_loader(self, config, *, is_eval, samples, verbose):
+    def get_data_loader(self, config, *, is_eval=False, samples, verbose=True):
         return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True)
 
 
