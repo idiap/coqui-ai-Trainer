@@ -13,21 +13,11 @@ class TensorboardLogger(BaseDashboardLogger):
         self.model_name = model_name
         self.writer = SummaryWriter(log_dir)
 
-    def model_weights(self, model: torch.nn.Module, step: int) -> None:
-        for layer_num, (name, param) in enumerate(model.named_parameters(), start=1):
-            if param.numel() == 1:
-                self.writer.add_scalar(f"layer{layer_num}-{name}/value", param.max(), step)
-            else:
-                self.writer.add_scalar(f"layer{layer_num}-{name}/max", param.max(), step)
-                self.writer.add_scalar(f"layer{layer_num}-{name}/min", param.min(), step)
-                self.writer.add_scalar(f"layer{layer_num}-{name}/mean", param.mean(), step)
-                self.writer.add_scalar(f"layer{layer_num}-{name}/std", param.std(), step)
-                self.writer.add_histogram(f"layer{layer_num}-{name}/param", param, step)
-                if param.grad is not None:
-                    self.writer.add_histogram(f"layer{layer_num}-{name}/grad", param.grad, step)
-
     def add_scalar(self, title: str, value: float, step: int) -> None:
         self.writer.add_scalar(title, value, step)
+
+    def add_histogram(self, title: str, values: torch.Tensor, step: int) -> None:
+        self.writer.add_histogram(title, values, step)
 
     def add_audio(self, title: str, audio: Audio, step: int, sample_rate: int) -> None:
         if audio.dtype == "float16":

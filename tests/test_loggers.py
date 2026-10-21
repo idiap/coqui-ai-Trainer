@@ -34,6 +34,8 @@ def test_logger(dashboard_logger, tmp_path):
     config = MnistModelConfig(dashboard_logger=dashboard_logger)
     config.save_json(tmp_path / "config.json")
     model = MnistModel()
+    for param in model.parameters():
+        param.grad = torch.zeros_like(param)
     logger = logger_factory(config, tmp_path)
 
     logger.add_config(config)
