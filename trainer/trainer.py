@@ -188,9 +188,6 @@ class Trainer:
             output_path = get_experiment_folder_path(output_path, config.run_name)
             output_path.mkdir(exist_ok=True, parents=True)
 
-        # copy training assets to the output folder
-        copy_model_files(config, output_path, new_fields)
-
         # init class members
         self.args = args
         self.config = config
@@ -206,16 +203,34 @@ class Trainer:
         log_file = os.path.join(self.output_path, f"trainer_{args.rank}_log.txt")
         self._setup_logger_config(log_file)
 
+        self.log_model_step = (
+            self.config.log_model_step if self.config.log_model_step is not None else self.config.save_step
+        )
+        if self.log_model_step < self.config.save_step:
+            logger.warning(
+                " [!] `log_model_step` (%d) is smaller than `save_step` (%d), setting it to `save_step`.",
+                self.log_model_step,
+                self.config.save_step,
+            )
+            self.log_model_step = self.config.save_step
+            self.config.log_model_step = self.log_model_step
+        elif self.log_model_step % self.config.save_step != 0:
+            logger.warning(
+                " [!] `log_model_step` (%d) is not a multiple of `save_step` (%d), checkpoints will only be "
+                "uploaded to the logger at common multiples.",
+                self.log_model_step,
+                self.config.save_step,
+            )
+
+        # copy training assets to the output folder
+        copy_model_files(self.config, output_path, new_fields)
+
         # setup training environment
         self.device, self.num_gpus = self.setup_training_environment(args=args, config=config, gpu=gpu)
 
         # init loggers
         self.dashboard_logger, self.c_logger = self.init_loggers(self.config, output_path, dashboard_logger, c_logger)
         # self.c_logger.logger = logger
-
-        self.log_model_step = (
-            self.config.log_model_step if self.config.log_model_step is not None else self.config.save_step
-        )
 
         # make sure that start_with_eval is disabled if eval is disabled
         if not self.config.run_eval:
@@ -1068,10 +1083,10 @@ class Trainer:
                 and self.total_steps_done != 0
                 and self.config.save_checkpoints
             ):
-                self.save_checkpoint()
+                self.save_checkpoint(log_artifact=self.total_steps_done % self.log_model_step == 0)
 
             if self.total_steps_done % self.log_model_step == 0:
-                # log checkpoint as artifact
+                # log training visualizations
                 self.update_training_dashboard_logger(batch=batch, outputs=outputs)
 
             self.dashboard_logger.flush()
@@ -1342,8 +1357,6 @@ class Trainer:
                 logger.info(" > Saving model before exiting...")
                 # save the model on keyboard interrupt
                 self.save_checkpoint()
-                # update the training dashboard logger
-                self.update_training_dashboard_logger()
             # call the keyboard interrupt callback
             self.callbacks.on_keyboard_interrupt(self)
             # release file logger handles before removing experiment folder
@@ -1435,12 +1448,12 @@ class Trainer:
         )
 
     @rank_zero_only
-    def save_checkpoint(self) -> None:
-        """Save the current model checkpoint."""
+    def save_checkpoint(self, *, log_artifact: bool = True) -> None:
+        """Save the current model checkpoint and optionally upload it to the dashboard logger."""
         eval_loss = self._pick_target_avg_loss(self.keep_avg_eval)
         train_loss = self._pick_target_avg_loss(self.keep_avg_train)
 
-        save_checkpoint(
+        checkpoint_path = save_checkpoint(
             self.config,
             self._get_model(),
             self.output_path,
@@ -1453,18 +1466,20 @@ class Trainer:
             save_n_checkpoints=self.config.save_n_checkpoints,
         )
 
-    @rank_zero_only
-    def update_training_dashboard_logger(
-        self, batch: dict[str, Any] | None = None, outputs: dict[str, Any] | None = None
-    ) -> None:
+        if not log_artifact:
+            return
         aliases = [
             f"epoch-{self.epochs_done}",
             f"step-{self.total_steps_done}",
         ]
         self.dashboard_logger.add_artifact(
-            file_or_dir=self.output_path, name="checkpoint", artifact_type="model", aliases=aliases
+            file_or_dir=checkpoint_path, name="checkpoint", artifact_type="model", aliases=aliases
         )
 
+    @rank_zero_only
+    def update_training_dashboard_logger(
+        self, batch: dict[str, Any] | None = None, outputs: dict[str, Any] | None = None
+    ) -> None:
         # training visualizations
         if batch is not None and outputs is not None:
             model = self._get_model()

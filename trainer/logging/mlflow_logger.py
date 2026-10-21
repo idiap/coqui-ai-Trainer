@@ -76,7 +76,10 @@ class MLFlowLogger(BaseDashboardLogger):
     def add_artifact(
         self, file_or_dir: str | os.PathLike[Any], name: str, artifact_type: str, aliases: list[str] | None = None
     ) -> None:
-        self.client.log_artifacts(self.run_id, str(file_or_dir))
+        if Path(file_or_dir).is_file():
+            self.client.log_artifact(self.run_id, str(file_or_dir))
+        else:
+            self.client.log_artifacts(self.run_id, str(file_or_dir))
 
     def add_audio(self, title: str, audio: Audio, step: int, sample_rate: int) -> None:
         if audio.dtype == "float16":

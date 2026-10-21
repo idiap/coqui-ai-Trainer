@@ -1,4 +1,6 @@
+import json
 import logging
+from pathlib import Path
 
 import pytest
 import torch
@@ -289,3 +291,67 @@ def test_loaders_see_on_epoch_start_changes(tmp_path):
     assert trainer.train_loader.batch_size == 8
     assert trainer.eval_loader is not None
     assert trainer.eval_loader.batch_size == 8
+
+
+def test_log_model_step_at_least_save_step(tmp_path):
+    config = MnistModelConfig()
+    config.save_step = 2
+    config.log_model_step = 1
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        output_path=tmp_path,
+        model=MnistModel(),
+        train_samples=get_mnist_samples(is_eval=False),
+        eval_samples=get_mnist_samples(is_eval=True),
+        parse_command_line_args=False,
+    )
+    assert trainer.log_model_step == 2
+    saved_config = json.loads((trainer.output_path / "config.json").read_text())
+    assert saved_config["log_model_step"] == 2
+
+
+def test_checkpoint_artifact_only_on_log_model_step(tmp_path, monkeypatch):
+    """Ensure checkpoint artifact is only logged at log_model_step and targets the specific .pth file."""
+    config = MnistModelConfig()
+    config.epochs = 1
+    config.save_step = 1
+    config.log_model_step = 2
+    config.save_checkpoints = True
+    config.batch_size = 8
+
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        output_path=tmp_path,
+        model=MnistModel(),
+        train_samples=get_mnist_samples(is_eval=False, num_samples=5 * config.batch_size),
+        eval_samples=get_mnist_samples(is_eval=True, num_samples=config.batch_size),
+        gpu=None,
+        parse_command_line_args=False,
+    )
+
+    artifact_calls = []
+
+    def mock_add_artifact(file_or_dir, name, artifact_type, aliases=None):
+        artifact_calls.append(
+            {
+                "file_or_dir": str(file_or_dir),
+                "name": name,
+                "type": artifact_type,
+                "step": trainer.total_steps_done,
+            }
+        )
+
+    monkeypatch.setattr(trainer.dashboard_logger, "add_artifact", mock_add_artifact)
+
+    trainer.fit()
+
+    # Checkpoints are saved at every step, but only uploaded at every log_model_step (even steps)
+    checkpoint_artifacts = [call for call in artifact_calls if call["name"] == "checkpoint"]
+    expected_steps = list(range(2, trainer.total_steps_done, 2))
+    assert len(expected_steps) > 1
+    assert [call["step"] for call in checkpoint_artifacts] == expected_steps
+    assert [Path(call["file_or_dir"]).name for call in checkpoint_artifacts] == [
+        f"checkpoint_{step}.pth" for step in expected_steps
+    ]
