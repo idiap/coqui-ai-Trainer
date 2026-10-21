@@ -304,11 +304,17 @@ class Trainer:
                 )
                 self.criterion = [copy.deepcopy(self.criterion[0]) for _ in range(num_optimizers)]
             if len(self.scheduler) == 1:
-                logger.warning(
-                    "Single scheduler expanded to %i copies to match the number of optimizers.", num_optimizers
-                )
-                self.scheduler = [copy.deepcopy(self.scheduler[0]) for _ in range(num_optimizers)]
-        if len(self.optimizer) != len(self.scheduler) != len(self.criterion):
+                # A scheduler is bound to its optimizer, so it can't be copied for the others.
+                scheduler = self.scheduler[0]
+                self.scheduler = [None] * num_optimizers
+                if scheduler is not None:
+                    idx = next((i for i, o in enumerate(self.optimizer) if o is scheduler.optimizer), None)
+                    if idx is None:
+                        msg = "The scheduler returned by get_scheduler() is not bound to any of the optimizers."
+                        raise RuntimeError(msg)
+                    logger.warning("Single scheduler only applied to optimizer %i, the others are not scheduled.", idx)
+                    self.scheduler[idx] = scheduler
+        if not len(self.optimizer) == len(self.scheduler) == len(self.criterion):
             lengths = f"{len(self.optimizer)} != {len(self.scheduler)} != {len(self.criterion)}"
             msg = f"get_optimizer(), get_scheduler() and get_criterion must return the same number of items: {lengths}"
             raise RuntimeError(msg)
@@ -1513,16 +1519,23 @@ class Trainer:
             if self.config.optimizer is None:
                 msg = "No name specified in `optimizer`"
                 raise ValueError(msg) from e
+            optimizer_params = self.config.optimizer_params or {}
+            lr = self.config.lr
             if isinstance(self.config.optimizer, list):
-                optimizers = []
-                for i, optimizer_name in enumerate(self.config.optimizer):
-                    optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params[i]  # type: ignore[index]
-                    optimizers.append(get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model))  # type: ignore[arg-type]
-                optimizer = optimizers
+                optimizer = [
+                    get_optimizer(
+                        optimizer_name,
+                        optimizer_params[i] if isinstance(optimizer_params, list) else optimizer_params,
+                        lr[i] if isinstance(lr, list) else lr,
+                        self.model,
+                    )
+                    for i, optimizer_name in enumerate(self.config.optimizer)
+                ]
             else:
-                optimizer_name = self.config.optimizer
-                optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params
-                optimizer = get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model)  # type: ignore[arg-type]
+                if isinstance(optimizer_params, list) or isinstance(lr, list):
+                    msg = "`optimizer_params` and `lr` can only be lists when `optimizer` is a list"
+                    raise TypeError(msg) from e
+                optimizer = get_optimizer(self.config.optimizer, optimizer_params, lr, self.model)
         return optimizer if isinstance(optimizer, list) else [optimizer]
 
     def get_lr(self) -> list[float]:
@@ -1568,7 +1581,15 @@ class Trainer:
         except NotImplementedError:
             lr_scheduler = self.config.lr_scheduler
             lr_scheduler_params = self.config.lr_scheduler_params
-            scheduler = get_scheduler(lr_scheduler, lr_scheduler_params, self.optimizer[0])  # type: ignore[arg-type]
+            if isinstance(lr_scheduler, list):
+                scheduler = [
+                    get_scheduler(name, lr_scheduler_params, optimizer)
+                    for name, optimizer in zip(lr_scheduler, self.optimizer, strict=True)
+                ]
+            else:
+                scheduler = [
+                    get_scheduler(lr_scheduler, lr_scheduler_params, optimizer) for optimizer in self.optimizer
+                ]
         return scheduler if isinstance(scheduler, list) else [scheduler]
 
     def get_criterion(self) -> list[nn.Module]:
