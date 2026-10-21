@@ -168,6 +168,13 @@ class Trainer:
         else:
             new_fields = {}
 
+        if config.run_eval and not eval_samples and eval_loader is None:
+            msg = (
+                "Evaluation is enabled (`run_eval=True`), but neither `eval_samples` nor `eval_loader` was provided. "
+                "If you want to train without evaluation, set `config.run_eval = False`."
+            )
+            raise ValueError(msg)
+
         # set the output path
         if args.continue_path:
             self.continue_run = True
@@ -595,9 +602,13 @@ class Trainer:
             verbose=verbose,
         )
 
-        assert len(loader) > 0, (
-            " ❗ len(DataLoader) returns 0. Make sure your dataset is not empty or len(dataset) > 0. "
-        )
+        if len(loader) == 0:
+            stage = "Evaluation" if is_eval else "Training"
+            msg = (
+                f"❗ {stage} DataLoader is empty (len=0). "
+                "Make sure your dataset is not empty and samples were not filtered out."
+            )
+            raise ValueError(msg)
         return loader
 
     def _get_model(self) -> TrainerModel:
@@ -644,6 +655,12 @@ class Trainer:
             is_eval=True,
             verbose=verbose,
         )
+
+    def _ensure_eval_loader(self) -> DataLoader[Any]:
+        """Create the evaluation data loader from `eval_samples` if it does not exist yet."""
+        if self.eval_loader is None:
+            self.eval_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
+        return self.eval_loader
 
     def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """Format the dataloader output and return a batch.
@@ -1175,15 +1192,14 @@ class Trainer:
         # initialize it when eval_epoch is called alone.
         self.keep_avg_eval = KeepAverage() if self.keep_avg_eval is None else self.keep_avg_eval
 
-        if self.eval_loader is None:
-            self.eval_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
+        eval_loader = self._ensure_eval_loader()
 
         self.model.eval()
         self.c_logger.print_eval_start()
         loader_start_time = time.time()
         batch = None
         outputs = None
-        for cur_step, batch in enumerate(self.eval_loader):
+        for cur_step, batch in enumerate(eval_loader):
             # format data
             batch = self.format_batch(batch)
             loader_time = time.time() - loader_start_time
@@ -1258,6 +1274,12 @@ class Trainer:
                 # let all processes sync up before starting with a new epoch of training
                 dist.barrier()
             self.callbacks.on_epoch_start(self)
+
+            # build the eval loader before training to catch an empty eval set early, but after
+            # `on_epoch_start` so that config changes made there are picked up
+            if self.config.run_eval:
+                self._ensure_eval_loader()
+
             self.keep_avg_train = KeepAverage()
             self.keep_avg_eval = KeepAverage() if self.config.run_eval else None
             self.epochs_done = epoch

@@ -2,6 +2,7 @@ import logging
 
 import pytest
 import torch
+from torch.utils.data import DataLoader
 
 from tests.utils.mnist import MnistModel, MnistModelConfig, get_mnist_samples
 from trainer import Trainer, TrainerArgs
@@ -131,3 +132,160 @@ def test_eval_only_without_train_samples(tmp_path):
 
     assert trainer.keep_avg_eval is not None
     assert "avg_loss" in trainer.keep_avg_eval.avg_values
+
+
+def test_eval_samples_required_when_run_eval_enabled(tmp_path):
+    config = MnistModelConfig()
+    config.run_eval = True
+    model = MnistModel()
+
+    # Passing train_samples with eval_samples=None must raise ValueError
+    with pytest.raises(ValueError, match="Evaluation is enabled"):
+        Trainer(
+            TrainerArgs(),
+            config,
+            output_path=tmp_path,
+            model=model,
+            train_samples=["dummy_train"],
+            eval_samples=None,
+            parse_command_line_args=False,
+        )
+
+    # Passing train_samples with empty eval_samples must raise ValueError
+    with pytest.raises(ValueError, match="Evaluation is enabled"):
+        Trainer(
+            TrainerArgs(),
+            config,
+            output_path=tmp_path,
+            model=model,
+            train_samples=["dummy_train"],
+            eval_samples=[],
+            parse_command_line_args=False,
+        )
+
+    # no output folder should be left behind
+    assert not any(tmp_path.iterdir())
+
+    # If run_eval is False, eval_samples=None is allowed
+    config_no_eval = MnistModelConfig()
+    config_no_eval.run_eval = False
+    trainer = Trainer(
+        TrainerArgs(),
+        config_no_eval,
+        output_path=tmp_path,
+        model=model,
+        train_samples=["dummy_train"],
+        eval_samples=None,
+        parse_command_line_args=False,
+    )
+    assert trainer.eval_samples is None
+
+
+def test_empty_dataloader_raises_valueerror(tmp_path):
+    class EmptyLoaderModel(MnistModel):
+        def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
+            return DataLoader([])  # type: ignore[arg-type]
+
+    config = MnistModelConfig()
+    config.run_eval = False
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        output_path=tmp_path,
+        model=EmptyLoaderModel(),
+        train_samples=["dummy_train"],
+        parse_command_line_args=False,
+    )
+    with pytest.raises(ValueError, match="Training DataLoader is empty"):
+        trainer._fit()
+
+
+def test_custom_eval_loader_allowed_without_eval_samples(tmp_path):
+    config = MnistModelConfig()
+    config.run_eval = True
+    model = MnistModel()
+    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # type: ignore[arg-type]
+
+    # Providing custom eval_loader should succeed even when eval_samples=None
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        output_path=tmp_path,
+        model=model,
+        train_samples=["dummy_train"],
+        eval_samples=None,
+        eval_loader=dummy_loader,
+        parse_command_line_args=False,
+    )
+    assert trainer.eval_loader is dummy_loader
+
+
+def test_train_loader_without_eval_loader_raises_when_run_eval(tmp_path):
+    config = MnistModelConfig()
+    config.run_eval = True
+    model = MnistModel()
+    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # type: ignore[arg-type]
+
+    # Providing train_loader but omitting eval_loader and eval_samples must raise
+    with pytest.raises(ValueError, match="Evaluation is enabled"):
+        Trainer(
+            TrainerArgs(),
+            config,
+            output_path=tmp_path,
+            model=model,
+            train_loader=dummy_loader,
+            eval_loader=None,
+            eval_samples=None,
+            parse_command_line_args=False,
+        )
+
+
+def test_empty_eval_loader_raises_before_training_epochs(tmp_path):
+    class EmptyEvalModel(MnistModel):
+        def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
+            if is_eval:
+                return DataLoader([])  # type: ignore[arg-type]
+            return super().get_data_loader(config, is_eval=is_eval, samples=samples, verbose=verbose)
+
+    config = MnistModelConfig()
+    config.run_eval = True
+    config.epochs = 5
+    model = EmptyEvalModel()
+
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        output_path=tmp_path,
+        model=model,
+        train_samples=get_mnist_samples(is_eval=False),
+        eval_samples=["dummy_eval"],
+        parse_command_line_args=False,
+    )
+
+    # Must raise before any training epoch runs
+    with pytest.raises(ValueError, match="Evaluation DataLoader is empty"):
+        trainer._fit()
+
+    assert trainer.total_steps_done == 0
+
+
+def test_loaders_see_on_epoch_start_changes(tmp_path):
+    def set_batch_size(trainer):
+        trainer.config.batch_size = 8
+
+    trainer = Trainer(
+        TrainerArgs(),
+        MnistModelConfig(),
+        output_path=tmp_path,
+        model=MnistModel(),
+        train_samples=get_mnist_samples(is_eval=False),
+        eval_samples=get_mnist_samples(is_eval=True),
+        parse_command_line_args=False,
+        callbacks={"on_epoch_start": set_batch_size},
+    )
+    trainer._fit()
+
+    assert trainer.train_loader is not None
+    assert trainer.train_loader.batch_size == 8
+    assert trainer.eval_loader is not None
+    assert trainer.eval_loader.batch_size == 8
