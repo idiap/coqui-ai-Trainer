@@ -1,5 +1,8 @@
+import logging
+
 import pytest
 import torch
+from fsspec.implementations.local import LocalFileSystem
 
 from trainer.generic_utils import (
     empty_cache,
@@ -86,3 +89,19 @@ def test_remove_experiment_folder(tmp_path):
 
     checkpoint.unlink()
     run_dir.rmdir()
+
+
+def test_remove_experiment_folder_handles_permission_error(tmp_path, monkeypatch, caplog):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    def rm(*_args, **_kwargs):
+        raise PermissionError(32, "The process cannot access the file because it is being used by another process")
+
+    monkeypatch.setattr(LocalFileSystem, "rm", rm)
+    monkeypatch.setattr(logging.getLogger("trainer"), "propagate", True)
+
+    with caplog.at_level(logging.WARNING, logger="trainer"):
+        remove_experiment_folder(run_dir)
+    assert "Failed to remove run folder" in caplog.text
+    assert run_dir.is_dir()

@@ -101,11 +101,10 @@ class ClearMLLogger(BaseDashboardLogger):
         """Log audio to ClearML."""
         if audio.dtype == "float16":
             audio = audio.astype("float32")
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            temp_path = Path(f.name)
-            sf.write(f.name, audio, sample_rate)
-            self.logger.report_media(title, title, iteration=step, local_path=f.name)
-            temp_path.unlink()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audio_path = Path(tmp_dir) / "audio.wav"
+            sf.write(audio_path, audio, sample_rate)
+            self.logger.report_media(title, title, iteration=step, local_path=str(audio_path))
 
     @rank_zero_only
     def add_config(self, config: TrainerConfig) -> None:

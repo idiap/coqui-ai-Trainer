@@ -76,6 +76,19 @@ jobs:
           PY
       - name: Unit tests
         run: uv run --no-sync pytest tests -q
+  test-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup uv
+        uses: ./.github/actions/setup-uv
+      - name: Install
+        run: uv sync --all-extras --no-extra cuda --group test
+      - name: Unit tests
+        run: uv run --no-sync pytest tests -q
   coverage:
     if: always()
     needs: test

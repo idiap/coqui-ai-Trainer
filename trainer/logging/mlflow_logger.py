@@ -81,10 +81,10 @@ class MLFlowLogger(BaseDashboardLogger):
     def add_audio(self, title: str, audio: Audio, step: int, sample_rate: int) -> None:
         if audio.dtype == "float16":
             audio = audio.astype("float32")
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            sf.write(f.name, audio, sample_rate)
-            self.client.log_artifact(self.run_id, f.name, f"{title}/{step}.wav")
-            Path(f.name).unlink()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audio_path = Path(tmp_dir) / "audio.wav"
+            sf.write(audio_path, audio, sample_rate)
+            self.client.log_artifact(self.run_id, str(audio_path), f"{title}/{step}.wav")
 
     def train_step_stats(self, step: int, stats: dict[str, float]) -> None:
         self.client.set_tag(self.run_id, "Mode", "training")
