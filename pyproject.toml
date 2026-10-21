@@ -78,7 +78,7 @@ wandb = ["wandb>=0.19"]
 [dependency-groups]
 dev = [
     "coverage>=7",
-    "pre-commit>=4",
+    "prek>=0.5",
     "pytest>=9",
     "ruff==0.17.1",
 ]
@@ -133,7 +133,7 @@ Issues = "https://github.com/idiap/coqui-ai-Trainer/issues"
 exclude = [
     "/.github",
     "/.gitignore",
-    "/.pre-commit-config.yaml",
+    "/prek.toml",
     "/CODE_OF_CONDUCT.md",
     "/CONTRIBUTING.md",
     "/Makefile",
