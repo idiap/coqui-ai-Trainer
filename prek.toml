@@ -12,6 +12,24 @@ hooks = [
   { id = "trailing-whitespace" },
 ]
 
+# Run ty from the project environment instead of ty-pre-commit: its `uv check` entry
+# fails on the conflicting cpu/cuda extras (`uv workspace metadata` can't collect module owners).
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "ty",
+    name = "ty",
+    entry = "make typecheck",
+    language = "system",
+    types_or = ["python", "pyi"],
+    pass_filenames = false,
+    always_run = true,
+    require_serial = true,
+  },
+]
+
+
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.17.1"

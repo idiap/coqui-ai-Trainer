@@ -74,7 +74,7 @@ class MnistModel(TrainerModel):
             x, y = zip(*batch, strict=True)
             return {"input": torch.stack(x), "target": torch.tensor(y)}
 
-        return DataLoader(samples, batch_size=config.batch_size, collate_fn=_collate_fn)  # type: ignore[arg-type]
+        return DataLoader(samples, batch_size=config.batch_size, collate_fn=_collate_fn)  # ty: ignore[invalid-argument-type]
 
 
 def get_mnist_samples(*, is_eval: bool, num_samples: int = 256) -> list[tuple[torch.Tensor, int]]:

@@ -140,7 +140,7 @@ class GANModel(TrainerModel):
         samples: list[Any],
         verbose: bool = False,
     ):
-        return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)  # type: ignore[arg-type]
+        return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)  # ty: ignore[invalid-argument-type]
 
 
 def test_overfit_mnist_simple_gan(tmp_path):

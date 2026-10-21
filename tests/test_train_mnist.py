@@ -194,7 +194,7 @@ def test_empty_dataloader_raises_valueerror(tmp_path):
     class EmptyLoaderModel(MnistModel):
         @override
         def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
-            return DataLoader([])  # type: ignore[arg-type]
+            return DataLoader([])  # ty: ignore[invalid-argument-type]
 
     config = MnistModelConfig()
     config.run_eval = False
@@ -214,7 +214,7 @@ def test_custom_eval_loader_allowed_without_eval_samples(tmp_path):
     config = MnistModelConfig()
     config.run_eval = True
     model = MnistModel()
-    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # type: ignore[arg-type]
+    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # ty: ignore[invalid-argument-type]
 
     # Providing custom eval_loader should succeed even when eval_samples=None
     trainer = Trainer(
@@ -234,7 +234,7 @@ def test_train_loader_without_eval_loader_raises_when_run_eval(tmp_path):
     config = MnistModelConfig()
     config.run_eval = True
     model = MnistModel()
-    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # type: ignore[arg-type]
+    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # ty: ignore[invalid-argument-type]
 
     # Providing train_loader but omitting eval_loader and eval_samples must raise
     with pytest.raises(ValueError, match="Evaluation is enabled"):
@@ -254,7 +254,7 @@ def test_empty_eval_loader_raises_before_training_epochs(tmp_path):
     class EmptyEvalModel(MnistModel):
         def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
             if is_eval:
-                return DataLoader([])  # type: ignore[arg-type]
+                return DataLoader([])  # ty: ignore[invalid-argument-type]
             return super().get_data_loader(config, is_eval=is_eval, samples=samples, verbose=verbose)
 
     config = MnistModelConfig()
