@@ -83,7 +83,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 10. Run the linter and correct the issues raised. We use ```ruff``` for linting.
     It helps to enforce a coding standard, offers simple refactoring
     suggestions. The formatter and linter are also run automatically via
-    pre-commit.
+    a [prek](https://prek.j178.dev/) pre-commit hook.
 
     ```bash
     make lint

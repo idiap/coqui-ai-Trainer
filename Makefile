@@ -27,4 +27,4 @@ mypy:	## run type checker.
 
 install:	## install 🐸 Trainer for development.
 	uv sync --all-extras --no-extra cuda
-	uv run pre-commit install
+	uv run prek install
