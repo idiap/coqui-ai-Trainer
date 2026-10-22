@@ -1301,9 +1301,16 @@ class Trainer:
             self.start_with_eval = False
 
     def fit_with_largest_batch_size(self, starting_batch_size: int = 2048) -> None:
+        if not self.train_samples:
+            msg = "`fit_with_largest_batch_size()` needs `train_samples` to rebuild the train loader."
+            raise ValueError(msg)
         cuda_meminfo()
         bs = starting_batch_size
         while True:
+            # drop loaders built with the previous batch size so that they are rebuilt from the samples
+            self.train_loader = None
+            if self.eval_samples:
+                self.eval_loader = None
             gc.collect()
             empty_cache(self.device)
             try:
@@ -1313,14 +1320,7 @@ class Trainer:
                 logger.info(" > current batch size: %i", self.config.batch_size)
                 self._fit()
             except RuntimeError as exception:
-                if bs > 1 and should_reduce_batch_size(exception):
-                    bs //= 2
-                    gc.collect()
-                    empty_cache(self.device)
-                else:
-                    raise
-            except Exception as exception:  # pylint: disable=broad-except
-                # catches the torch.cuda.OutOfMemoryError
+                # includes torch.cuda.OutOfMemoryError
                 if bs > 1 and should_reduce_batch_size(exception):
                     bs //= 2
                     gc.collect()
