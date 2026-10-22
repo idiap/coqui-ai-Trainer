@@ -148,12 +148,14 @@ class GANModel(TrainerModel):
     def get_criterion(self):
         return nn.BCELoss()
 
-    def get_data_loader(self, config, is_eval, samples, verbose):
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-        dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-        dataset.data = dataset.data[:64]
-        dataset.targets = dataset.targets[:64]
-        return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True)
+    def get_data_loader(self, config, *, is_eval, samples, verbose):
+        return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True)
+
+
+def get_mnist_samples(*, is_eval, num_samples=64):
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+    dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
+    return [dataset[i] for i in range(num_samples)]
 
 
 if __name__ == "__main__":
@@ -162,6 +164,14 @@ if __name__ == "__main__":
     config.grad_clip = 0
 
     model = GANModel()
-    trainer = Trainer(TrainerArgs(), config, model=model, output_path=Path.cwd(), gpu=0 if is_cuda else None)
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        model=model,
+        output_path=Path.cwd(),
+        train_samples=get_mnist_samples(is_eval=False),
+        eval_samples=get_mnist_samples(is_eval=True),
+        gpu=0 if is_cuda else None,
+    )
     trainer.config.epochs = 10
     trainer.fit()

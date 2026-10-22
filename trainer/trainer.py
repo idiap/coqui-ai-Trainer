@@ -113,18 +113,20 @@ class Trainer:
                 initializes a model from the provided config. Defaults to None.
 
             train_samples (List):
-                A list of training samples used by the model's training dataloader to init the `dataset` and the
-                `data_loader`. Defaults to None.
+                A list of training samples passed to `model.get_data_loader()` to init the `dataset` and the
+                `data_loader`. Required for training unless `train_loader` is given. Defaults to None.
 
             eval_samples (List):
-                A list of evaluation samples used by `get_eval_dataloader` to init the `dataset` and the
-                `data_loader`. Defaults to None.
+                A list of evaluation samples passed to `model.get_data_loader()` to init the `dataset` and the
+                `data_loader`. Required if `config.run_eval` is set, unless `eval_loader` is given. Defaults to None.
 
             train_loader (DataLoader):
-                A pytorch data loader object for training epochs. Leave as None if you want it to be made during training. Defaults to None.
+                A pytorch data loader object for training epochs. Leave as None to make it from `train_samples`.
+                Defaults to None.
 
             eval_loader (DataLoader):
-                A pytorch data loader object for evaluation epochs. Leave as None to be generated during training. Defaults to None.
+                A pytorch data loader object for evaluation epochs. Leave as None to make it from `eval_samples`.
+                Defaults to None.
 
             parse_command_line_args (bool):
                 If true, parse command-line arguments and update `TrainerArgs` and model `config` values. Set it
@@ -231,12 +233,8 @@ class Trainer:
             else self.config.use_grad_scaler
         )
 
-        self.train_samples: list[Any] | None = None
-        self.eval_samples: list[Any] | None = None
-        if train_samples is not None:
-            # use provided samples, else expecting to load samples in `model.get_data_loader()`
-            self.train_samples = train_samples
-            self.eval_samples = eval_samples
+        self.train_samples = train_samples
+        self.eval_samples = eval_samples
 
         # define custom train and eval loader
         self.train_loader = train_loader
@@ -586,6 +584,10 @@ class Trainer:
         is_eval: bool,
         verbose: bool,
     ) -> DataLoader[Any]:
+        if samples is None:
+            stage = "eval" if is_eval else "train"
+            msg = f"Cannot create the {stage} data loader without samples. Pass `{stage}_samples` or `{stage}_loader`."
+            raise ValueError(msg)
         loader = model.get_data_loader(
             config=config,
             is_eval=is_eval,

@@ -1,14 +1,12 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import MNIST
 
+from tests.utils.mnist import get_mnist_samples
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
 
 is_cuda = torch.cuda.is_available()
@@ -136,14 +134,10 @@ class GANModel(TrainerModel):
         config: TrainerConfig,
         *,
         is_eval: bool = False,
-        samples: list[Any] | None = None,
+        samples: list[Any],
         verbose: bool = False,
     ):
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-        dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-        dataset.data = dataset.data[:64]
-        dataset.targets = dataset.targets[:64]
-        return DataLoader(dataset, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)
+        return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)  # type: ignore[arg-type]
 
 
 def test_overfit_mnist_simple_gan(tmp_path):
@@ -152,7 +146,15 @@ def test_overfit_mnist_simple_gan(tmp_path):
     config.grad_clip = 0.0
 
     model = GANModel()
-    trainer = Trainer(TrainerArgs(), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None)
+    trainer = Trainer(
+        TrainerArgs(),
+        config,
+        output_path=tmp_path,
+        model=model,
+        train_samples=get_mnist_samples(is_eval=False, num_samples=64),
+        eval_samples=get_mnist_samples(is_eval=True, num_samples=64),
+        gpu=0 if is_cuda else None,
+    )
 
     trainer.config.epochs = 1
     trainer.fit()
@@ -178,7 +180,13 @@ def test_overfit_accelerate_mnist_simple_gan(tmp_path):
 
     model = GANModel()
     trainer = Trainer(
-        TrainerArgs(use_accelerate=True), config, output_path=tmp_path, model=model, gpu=0 if is_cuda else None
+        TrainerArgs(use_accelerate=True),
+        config,
+        output_path=tmp_path,
+        model=model,
+        train_samples=get_mnist_samples(is_eval=False, num_samples=64),
+        eval_samples=get_mnist_samples(is_eval=True, num_samples=64),
+        gpu=0 if is_cuda else None,
     )
 
     trainer.eval_epoch()

@@ -120,7 +120,7 @@ class TrainerModel(ABC, nn.Module):
         config: TrainerConfig,
         *,
         is_eval: bool = False,
-        samples: list[Any] | None = None,
+        samples: list[Any],
         verbose: bool = True,
     ) -> torch.utils.data.DataLoader[Any]:
         """Get data loader for the model.
@@ -128,7 +128,8 @@ class TrainerModel(ABC, nn.Module):
         Args:
             config (TrainerConfig): Configuration object.
             is_eval (bool): If True, returns evaluation data loader.
-            samples (Union[List[Dict], List[List]]): List of samples to be used for data loading.
+            samples (Union[List[Dict], List[List]]): List of samples to be used for data loading. These are the
+                `train_samples` or `eval_samples` passed to the `Trainer`.
             verbose (bool): If True, prints data loading information.
 
         Returns:
