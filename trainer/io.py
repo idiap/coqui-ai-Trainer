@@ -151,7 +151,7 @@ def save_checkpoint(
     scaler: "torch.GradScaler | None" = None,
     save_n_checkpoints: int | None = None,
     **kwargs: Any,
-) -> None:
+) -> str:
     file_name = f"checkpoint_{current_step}.pth"
     checkpoint_path = os.path.join(output_folder, file_name)
 
@@ -169,6 +169,7 @@ def save_checkpoint(
     )
     if save_n_checkpoints is not None:
         keep_n_checkpoints(output_folder, save_n_checkpoints)
+    return checkpoint_path
 
 
 def save_best_model(

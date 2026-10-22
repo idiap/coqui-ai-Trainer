@@ -130,7 +130,8 @@ class TrainerConfig(Coqpit):
     log_model_step: int | None = field(
         default=None,
         metadata={
-            "help": "Save checkpoint to the logger every log_model_step steps. If not defined `save_step == log_model_step`."
+            "help": "Upload checkpoint and log training visualizations to the logger every log_model_step steps. "
+            "Must be at least `save_step`, if not defined `save_step == log_model_step`."
         },
     )
     save_step: int = field(
