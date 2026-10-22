@@ -65,22 +65,32 @@ class MnistModel(TrainerModel):
         return torch.nn.NLLLoss()
 
     def get_data_loader(
-        self, config: TrainerConfig, *, is_eval: bool = False, samples: list[Any] | None = None, verbose: bool = False
+        self, config: TrainerConfig, *, is_eval: bool = False, samples: list[Any], verbose: bool = False
     ):
         def _collate_fn(batch):
             x, y = zip(*batch, strict=True)
             return {"input": torch.stack(x), "target": torch.tensor(y)}
 
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-        dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
-        dataset.data = dataset.data[:256]
-        dataset.targets = dataset.targets[:256]
-        return DataLoader(dataset, batch_size=config.batch_size, collate_fn=_collate_fn)
+        return DataLoader(samples, batch_size=config.batch_size, collate_fn=_collate_fn)  # type: ignore[arg-type]
+
+
+def get_mnist_samples(*, is_eval: bool, num_samples: int = 256) -> list[tuple[torch.Tensor, int]]:
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+    dataset = MNIST(Path.cwd(), train=not is_eval, download=True, transform=transform)
+    return [dataset[i] for i in range(num_samples)]
 
 
 def create_trainer(config, model, output_path, gpu, continue_path="", restore_path=""):
     args = TrainerArgs(continue_path=continue_path, restore_path=restore_path)
-    trainer = Trainer(args, config, output_path=output_path, model=model, gpu=gpu)
+    trainer = Trainer(
+        args,
+        config,
+        output_path=output_path,
+        model=model,
+        train_samples=get_mnist_samples(is_eval=False),
+        eval_samples=get_mnist_samples(is_eval=True),
+        gpu=gpu,
+    )
     trainer.train_loader = trainer.get_train_dataloader(trainer.train_samples)
     trainer.keep_avg_train = KeepAverage()
     return trainer

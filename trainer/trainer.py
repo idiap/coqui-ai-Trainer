@@ -113,18 +113,20 @@ class Trainer:
                 initializes a model from the provided config. Defaults to None.
 
             train_samples (List):
-                A list of training samples used by the model's training dataloader to init the `dataset` and the
-                `data_loader`. Defaults to None.
+                A list of training samples passed to `model.get_data_loader()` to init the `dataset` and the
+                `data_loader`. Required for training unless `train_loader` is given. Defaults to None.
 
             eval_samples (List):
-                A list of evaluation samples used by `get_eval_dataloader` to init the `dataset` and the
-                `data_loader`. Defaults to None.
+                A list of evaluation samples passed to `model.get_data_loader()` to init the `dataset` and the
+                `data_loader`. Required if `config.run_eval` is set, unless `eval_loader` is given. Defaults to None.
 
             train_loader (DataLoader):
-                A pytorch data loader object for training epochs. Leave as None if you want it to be made during training. Defaults to None.
+                A pytorch data loader object for training epochs. Leave as None to make it from `train_samples`.
+                Defaults to None.
 
             eval_loader (DataLoader):
-                A pytorch data loader object for evaluation epochs. Leave as None to be generated during training. Defaults to None.
+                A pytorch data loader object for evaluation epochs. Leave as None to make it from `eval_samples`.
+                Defaults to None.
 
             parse_command_line_args (bool):
                 If true, parse command-line arguments and update `TrainerArgs` and model `config` values. Set it
@@ -165,6 +167,13 @@ class Trainer:
             config, new_fields = self.init_training(args, [], config)
         else:
             new_fields = {}
+
+        if config.run_eval and not eval_samples and eval_loader is None:
+            msg = (
+                "Evaluation is enabled (`run_eval=True`), but neither `eval_samples` nor `eval_loader` was provided. "
+                "If you want to train without evaluation, set `config.run_eval = False`."
+            )
+            raise ValueError(msg)
 
         # set the output path
         if args.continue_path:
@@ -231,12 +240,8 @@ class Trainer:
             else self.config.use_grad_scaler
         )
 
-        self.train_samples: list[Any] | None = None
-        self.eval_samples: list[Any] | None = None
-        if train_samples is not None:
-            # use provided samples, else expecting to load samples in `model.get_data_loader()`
-            self.train_samples = train_samples
-            self.eval_samples = eval_samples
+        self.train_samples = train_samples
+        self.eval_samples = eval_samples
 
         # define custom train and eval loader
         self.train_loader = train_loader
@@ -586,6 +591,10 @@ class Trainer:
         is_eval: bool,
         verbose: bool,
     ) -> DataLoader[Any]:
+        if samples is None:
+            stage = "eval" if is_eval else "train"
+            msg = f"Cannot create the {stage} data loader without samples. Pass `{stage}_samples` or `{stage}_loader`."
+            raise ValueError(msg)
         loader = model.get_data_loader(
             config=config,
             is_eval=is_eval,
@@ -593,9 +602,13 @@ class Trainer:
             verbose=verbose,
         )
 
-        assert len(loader) > 0, (
-            " ❗ len(DataLoader) returns 0. Make sure your dataset is not empty or len(dataset) > 0. "
-        )
+        if len(loader) == 0:
+            stage = "Evaluation" if is_eval else "Training"
+            msg = (
+                f"❗ {stage} DataLoader is empty (len=0). "
+                "Make sure your dataset is not empty and samples were not filtered out."
+            )
+            raise ValueError(msg)
         return loader
 
     def _get_model(self) -> TrainerModel:
@@ -642,6 +655,12 @@ class Trainer:
             is_eval=True,
             verbose=verbose,
         )
+
+    def _ensure_eval_loader(self) -> DataLoader[Any]:
+        """Create the evaluation data loader from `eval_samples` if it does not exist yet."""
+        if self.eval_loader is None:
+            self.eval_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
+        return self.eval_loader
 
     def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
         """Format the dataloader output and return a batch.
@@ -1173,15 +1192,14 @@ class Trainer:
         # initialize it when eval_epoch is called alone.
         self.keep_avg_eval = KeepAverage() if self.keep_avg_eval is None else self.keep_avg_eval
 
-        if self.eval_loader is None:
-            self.eval_loader = self.get_eval_dataloader(self.eval_samples, verbose=True)
+        eval_loader = self._ensure_eval_loader()
 
         self.model.eval()
         self.c_logger.print_eval_start()
         loader_start_time = time.time()
         batch = None
         outputs = None
-        for cur_step, batch in enumerate(self.eval_loader):
+        for cur_step, batch in enumerate(eval_loader):
             # format data
             batch = self.format_batch(batch)
             loader_time = time.time() - loader_start_time
@@ -1256,6 +1274,12 @@ class Trainer:
                 # let all processes sync up before starting with a new epoch of training
                 dist.barrier()
             self.callbacks.on_epoch_start(self)
+
+            # build the eval loader before training to catch an empty eval set early, but after
+            # `on_epoch_start` so that config changes made there are picked up
+            if self.config.run_eval:
+                self._ensure_eval_loader()
+
             self.keep_avg_train = KeepAverage()
             self.keep_avg_eval = KeepAverage() if self.config.run_eval else None
             self.epochs_done = epoch
@@ -1277,9 +1301,16 @@ class Trainer:
             self.start_with_eval = False
 
     def fit_with_largest_batch_size(self, starting_batch_size: int = 2048) -> None:
+        if not self.train_samples:
+            msg = "`fit_with_largest_batch_size()` needs `train_samples` to rebuild the train loader."
+            raise ValueError(msg)
         cuda_meminfo()
         bs = starting_batch_size
         while True:
+            # drop loaders built with the previous batch size so that they are rebuilt from the samples
+            self.train_loader = None
+            if self.eval_samples:
+                self.eval_loader = None
             gc.collect()
             empty_cache(self.device)
             try:
@@ -1289,14 +1320,7 @@ class Trainer:
                 logger.info(" > current batch size: %i", self.config.batch_size)
                 self._fit()
             except RuntimeError as exception:
-                if bs > 1 and should_reduce_batch_size(exception):
-                    bs //= 2
-                    gc.collect()
-                    empty_cache(self.device)
-                else:
-                    raise
-            except Exception as exception:  # pylint: disable=broad-except
-                # catches the torch.cuda.OutOfMemoryError
+                # includes torch.cuda.OutOfMemoryError
                 if bs > 1 and should_reduce_batch_size(exception):
                     bs //= 2
                     gc.collect()
