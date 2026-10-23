@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import MNIST
+from typing_extensions import override
 
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
 from trainer.generic_utils import KeepAverage
@@ -16,8 +17,8 @@ from trainer.generic_utils import KeepAverage
 
 @dataclass
 class MnistModelConfig(TrainerConfig):
-    optimizer: str = "Adam"
-    lr: float = 0.001
+    optimizer: str | list[str] | None = "Adam"
+    lr: float | list[float] = 0.001
     epochs: int = 1
     print_step: int = 1
     save_step: int = 5
@@ -61,9 +62,11 @@ class MnistModel(TrainerModel):
         loss = criterion(logits, batch["target"])
         return {"model_outputs": logits}, {"loss": loss}
 
+    @override
     def get_criterion(self) -> nn.Module:
         return torch.nn.NLLLoss()
 
+    @override
     def get_data_loader(
         self, config: TrainerConfig, *, is_eval: bool = False, samples: list[Any], verbose: bool = False
     ):
@@ -71,7 +74,7 @@ class MnistModel(TrainerModel):
             x, y = zip(*batch, strict=True)
             return {"input": torch.stack(x), "target": torch.tensor(y)}
 
-        return DataLoader(samples, batch_size=config.batch_size, collate_fn=_collate_fn)  # type: ignore[arg-type]
+        return DataLoader(samples, batch_size=config.batch_size, collate_fn=_collate_fn)  # ty: ignore[invalid-argument-type]
 
 
 def get_mnist_samples(*, is_eval: bool, num_samples: int = 256) -> list[tuple[torch.Tensor, int]]:

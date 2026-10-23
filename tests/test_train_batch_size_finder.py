@@ -21,9 +21,11 @@ def test_train_largest_batch_mnist(tmp_path):
     )
 
     trainer.fit_with_largest_batch_size(starting_batch_size=2048)
+    assert trainer.keep_avg_train is not None
     loss1 = trainer.keep_avg_train["avg_loss"]
 
     trainer.fit_with_largest_batch_size(starting_batch_size=2048)
+    assert trainer.keep_avg_train is not None
     loss2 = trainer.keep_avg_train["avg_loss"]
 
     assert loss1 > loss2
