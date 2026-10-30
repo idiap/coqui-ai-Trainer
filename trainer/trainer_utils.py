@@ -1,6 +1,5 @@
 import contextlib
 import importlib
-import importlib.util
 import os
 import random
 from collections.abc import Callable, Iterator
@@ -89,9 +88,9 @@ def setup_torch_training_env(
     random.seed(training_seed)
     os.environ["PYTHONHASHSEED"] = str(training_seed)
     with contextlib.suppress(ImportError):
-        import numpy as np  # noqa: PLC0415
+        import numpy as np  # ruff: ignore[import-outside-top-level]
 
-        np.random.seed(training_seed)
+        np.random.seed(training_seed)  # ruff: ignore[numpy-legacy-random]
     torch.manual_seed(training_seed)
     torch.cuda.manual_seed(training_seed)
     if torch.backends.mps.is_available():

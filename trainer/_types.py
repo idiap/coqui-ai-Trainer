@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 import torch
 
 if TYPE_CHECKING:
-    import matplotlib
+    import matplotlib.figure
     import numpy.typing as npt
-    import plotly
+    import plotly.graph_objects
 
     from trainer.trainer import Trainer
 

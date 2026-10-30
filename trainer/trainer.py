@@ -6,7 +6,6 @@ import platform
 import shutil
 import sys
 import time
-import traceback
 from collections.abc import Generator
 from contextlib import nullcontext, suppress
 from pathlib import Path
@@ -65,7 +64,7 @@ def get_grad_scaler(device_type: str) -> "torch.GradScaler":
     if is_pytorch_at_least_2_3():
         return torch.GradScaler(device=device_type)
     # Before 2.3 the scaler was CUDA-only.
-    return torch.cuda.amp.GradScaler()
+    return torch.cuda.amp.GradScaler()  # ty: ignore[deprecated]
 
 
 class Trainer:
@@ -305,11 +304,17 @@ class Trainer:
                 )
                 self.criterion = [copy.deepcopy(self.criterion[0]) for _ in range(num_optimizers)]
             if len(self.scheduler) == 1:
-                logger.warning(
-                    "Single scheduler expanded to %i copies to match the number of optimizers.", num_optimizers
-                )
-                self.scheduler = [copy.deepcopy(self.scheduler[0]) for _ in range(num_optimizers)]
-        if len(self.optimizer) != len(self.scheduler) != len(self.criterion):
+                # A scheduler is bound to its optimizer, so it can't be copied for the others.
+                scheduler = self.scheduler[0]
+                self.scheduler = [None] * num_optimizers
+                if scheduler is not None:
+                    idx = next((i for i, o in enumerate(self.optimizer) if o is scheduler.optimizer), None)
+                    if idx is None:
+                        msg = "The scheduler returned by get_scheduler() is not bound to any of the optimizers."
+                        raise RuntimeError(msg)
+                    logger.warning("Single scheduler only applied to optimizer %i, the others are not scheduled.", idx)
+                    self.scheduler[idx] = scheduler
+        if not len(self.optimizer) == len(self.scheduler) == len(self.criterion):
             lengths = f"{len(self.optimizer)} != {len(self.scheduler)} != {len(self.criterion)}"
             msg = f"get_optimizer(), get_scheduler() and get_criterion must return the same number of items: {lengths}"
             raise RuntimeError(msg)
@@ -368,7 +373,7 @@ class Trainer:
     def prepare_accelerate_loader(self, data_loader: DataLoader[Any]) -> DataLoader[Any]:
         """Prepare the accelerator for the training."""
         if self.use_accelerate:
-            return self.accelerator.prepare_data_loader(data_loader)
+            return cast("DataLoader[Any]", self.accelerator.prepare_data_loader(data_loader))
         return data_loader
 
     @staticmethod
@@ -381,23 +386,23 @@ class Trainer:
         grad_accum_steps: int,
         mixed_precision: bool,
         precision: str,
-    ) -> tuple:
+    ) -> tuple[TrainerModel, list[torch.optim.Optimizer], DataLoader[Any] | None, list[LRScheduler | None], Any]:
         """Setup HF Accelerate for the training."""
         # check if accelerate is installed
         try:
-            from accelerate import Accelerator  # noqa: PLC0415
+            from accelerate import Accelerator  # ruff: ignore[import-outside-top-level]
         except ImportError as e:
             msg = "Please install accelerate to use this feature."
             raise ImportError(msg) from e
 
-        _precision = precision if precision is not None else "f16" if mixed_precision else None
-        if _precision == "float16":
-            _precision = "f16"
-        elif _precision == "float8":
-            _precision = "f8"
-        elif _precision == "bfloat16":
-            _precision = "bf16"
-        accelerator = Accelerator(gradient_accumulation_steps=grad_accum_steps, mixed_precision=_precision)
+        precision_ = precision if precision is not None else "f16" if mixed_precision else None
+        if precision_ == "float16":
+            precision_ = "f16"
+        elif precision_ == "float8":
+            precision_ = "f8"
+        elif precision_ == "bfloat16":
+            precision_ = "bf16"
+        accelerator = Accelerator(gradient_accumulation_steps=grad_accum_steps, mixed_precision=precision_)
         if isinstance(model, nn.Module):
             model = accelerator.prepare_model(model)
 
@@ -508,7 +513,7 @@ class Trainer:
     ) -> tuple[torch.device, int]:
         if platform.system() != "Windows":
             # https://github.com/pytorch/pytorch/issues/973
-            import resource  # pylint:disable=import-outside-toplevel  # noqa: PLC0415
+            import resource  # pylint:disable=import-outside-toplevel  # ruff: ignore[import-outside-top-level]
 
             rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
             resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -552,7 +557,7 @@ class Trainer:
         logger.info(" > %s from %s ...", verb, os.path.basename(self.args.restore_path))
         checkpoint = load_fsspec(self.args.restore_path, map_location="cpu")
 
-        try:
+        try:  # ruff: ignore[too-many-statements-in-try-clause]
             logger.info(" > Restoring Model...")
             self.model.load_state_dict(checkpoint["model"])
             if self.continue_run:
@@ -597,7 +602,7 @@ class Trainer:
     # DATA LOADING FUNCTIONS
     #########################
 
-    def _get_loader(
+    def _get_loader(  # ruff: ignore[no-self-use]
         self,
         model: TrainerModel,
         config: TrainerConfig,
@@ -803,7 +808,10 @@ class Trainer:
         return grad_clip
 
     def _compute_grad_norm(self, optimizer: torch.optim.Optimizer) -> torch.Tensor:
-        return torch.norm(torch.cat([param.grad.view(-1) for param in self.master_params(optimizer)], dim=0), p=2)
+        return cast(
+            "torch.Tensor",
+            torch.norm(torch.cat([param.grad.view(-1) for param in self.master_params(optimizer)], dim=0), p=2),
+        )
 
     def _grad_clipping(
         self, grad_clip: float, optimizer: torch.optim.Optimizer, scaler: Optional["torch.GradScaler"]
@@ -868,7 +876,7 @@ class Trainer:
         self.callbacks.before_backward_pass(self, loss_dict)
 
         # accumulated gradients adjustment
-        loss_dict["loss"] = loss_dict["loss"] / float(self.grad_accum_steps)
+        loss_dict["loss"] /= float(self.grad_accum_steps)
 
         if self.use_accelerate:
             with self.accelerator.accumulate(self.model):
@@ -969,7 +977,7 @@ class Trainer:
         loss_dict.update(lrs)
 
         # OPTIMIZATION
-        try:
+        try:  # ruff: ignore[too-many-statements-in-try-clause,too-many-nested-blocks]
             # custom optimize for the model
             step_time = time.time()
             device, dtype = self._get_autocast_args(
@@ -1306,11 +1314,9 @@ class Trainer:
             if epoch >= self.config.test_delay_epochs and self.args.rank <= 0:
                 self.test_run()
 
-            self.c_logger.print_epoch_end(
-                epoch,
-                self.keep_avg_eval.avg_values if self.config.run_eval else self.keep_avg_train.avg_values,  # type: ignore[union-attr]
-            )
-            if self.args.rank in [None, 0]:
+            keep_avg = self.keep_avg_eval if self.config.run_eval else self.keep_avg_train
+            self.c_logger.print_epoch_end(epoch, keep_avg.avg_values if keep_avg is not None else {})
+            if self.args.rank in {None, 0}:
                 self.save_best_model()
             self.callbacks.on_epoch_end(self)
             self.start_with_eval = False
@@ -1373,12 +1379,11 @@ class Trainer:
             try:
                 sys.exit(130)
             except SystemExit:
-                os._exit(130)  # pylint: disable=protected-access
-        except BaseException:  # pylint: disable=broad-except
+                os._exit(130)
+        except BaseException:
             self._close_log_file()
             remove_experiment_folder(self.output_path)
-            traceback.print_exc()
-            sys.exit(1)
+            raise
 
     def profile_fit(
         self, torch_profiler: torch.profiler.profile, epochs: int | None = None, small_run: int | None = None
@@ -1514,16 +1519,23 @@ class Trainer:
             if self.config.optimizer is None:
                 msg = "No name specified in `optimizer`"
                 raise ValueError(msg) from e
+            optimizer_params = self.config.optimizer_params or {}
+            lr = self.config.lr
             if isinstance(self.config.optimizer, list):
-                optimizers = []
-                for i, optimizer_name in enumerate(self.config.optimizer):
-                    optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params[i]  # type: ignore[index]
-                    optimizers.append(get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model))  # type: ignore[arg-type]
-                optimizer = optimizers
+                optimizer = [
+                    get_optimizer(
+                        optimizer_name,
+                        optimizer_params[i] if isinstance(optimizer_params, list) else optimizer_params,
+                        lr[i] if isinstance(lr, list) else lr,
+                        self.model,
+                    )
+                    for i, optimizer_name in enumerate(self.config.optimizer)
+                ]
             else:
-                optimizer_name = self.config.optimizer
-                optimizer_params = {} if self.config.optimizer_params is None else self.config.optimizer_params
-                optimizer = get_optimizer(optimizer_name, optimizer_params, self.config.lr, self.model)  # type: ignore[arg-type]
+                if isinstance(optimizer_params, list) or isinstance(lr, list):
+                    msg = "`optimizer_params` and `lr` can only be lists when `optimizer` is a list"
+                    raise TypeError(msg) from e
+                optimizer = get_optimizer(self.config.optimizer, optimizer_params, lr, self.model)
         return optimizer if isinstance(optimizer, list) else [optimizer]
 
     def get_lr(self) -> list[float]:
@@ -1548,7 +1560,7 @@ class Trainer:
             logger.warning(
                 "Single learning rate expanded to %i copies to match the number of optimizers.", len(self.optimizer)
             )
-            lr_list = lr_list * len(self.optimizer)
+            lr_list *= len(self.optimizer)
         return lr_list
 
     def get_scheduler(self) -> list[LRScheduler | None]:
@@ -1569,7 +1581,15 @@ class Trainer:
         except NotImplementedError:
             lr_scheduler = self.config.lr_scheduler
             lr_scheduler_params = self.config.lr_scheduler_params
-            scheduler = get_scheduler(lr_scheduler, lr_scheduler_params, self.optimizer[0])  # type: ignore[arg-type]
+            if isinstance(lr_scheduler, list):
+                scheduler = [
+                    get_scheduler(name, lr_scheduler_params, optimizer)
+                    for name, optimizer in zip(lr_scheduler, self.optimizer, strict=True)
+                ]
+            else:
+                scheduler = [
+                    get_scheduler(lr_scheduler, lr_scheduler_params, optimizer) for optimizer in self.optimizer
+                ]
         return scheduler if isinstance(scheduler, list) else [scheduler]
 
     def get_criterion(self) -> list[nn.Module]:
