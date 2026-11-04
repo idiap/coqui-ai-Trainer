@@ -44,7 +44,11 @@ jobs:
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Install
-        run: uv sync --all-extras --no-extra cuda --group test
+        # torch 2.15 skips the runners' paravirtual GPU, so MPS is unavailable:
+        # https://github.com/pytorch/pytorch/issues/202529
+        run: |
+          uv sync --all-extras --no-extra cuda --group test
+          uv pip install "torch!=2.15.*"
       - name: Check for a Metal device
         # Fail loudly rather than let the MPS tests skip themselves into a green
         # run if a future runner image stops passing the GPU through.
