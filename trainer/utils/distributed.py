@@ -3,10 +3,13 @@ import logging
 import os
 from collections.abc import Callable
 from functools import wraps
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 import torch
 import torch.distributed as dist
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def is_dist_avail_and_initialized() -> bool:
@@ -28,9 +31,9 @@ def is_main_process() -> bool:
     return get_rank() == 0
 
 
-def rank_zero_only(fn: Callable) -> Callable:
+def rank_zero_only(fn: Callable[P, R]) -> Callable[P, R | None]:
     @wraps(fn)
-    def wrapped_fn(*args: Any, **kwargs: Any) -> Any | None:
+    def wrapped_fn(*args: P.args, **kwargs: P.kwargs) -> R | None:
         if is_main_process():
             return fn(*args, **kwargs)
         return None
@@ -39,12 +42,12 @@ def rank_zero_only(fn: Callable) -> Callable:
 
 
 @rank_zero_only
-def rank_zero_print(message: str, *args, **kwargs) -> None:  # pylint: disable=unused-argument
+def rank_zero_print(message: str, *args: Any, **kwargs: Any) -> None:  # pylint: disable=unused-argument
     print(message)
 
 
 @rank_zero_only
-def rank_zero_logger_info(message: str, logger: logging.Logger, *args, **kwargs) -> None:  # pylint: disable=unused-argument
+def rank_zero_logger_info(message: str, logger: logging.Logger, *args: Any, **kwargs: Any) -> None:  # pylint: disable=unused-argument
     logger.info(message)
 
 
@@ -55,7 +58,7 @@ def reduce_tensor(tensor: torch.Tensor, num_gpus: int) -> torch.Tensor:
     return rt
 
 
-def init_distributed(rank: int, num_gpus: int, group_name: str, dist_backend, dist_url) -> None:
+def init_distributed(rank: int, num_gpus: int, group_name: str, dist_backend: str, dist_url: str) -> None:
     assert torch.cuda.is_available(), "Distributed mode requires CUDA."
 
     # Set cuda device so everything is done on the right GPU.

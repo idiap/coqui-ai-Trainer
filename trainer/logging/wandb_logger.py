@@ -24,20 +24,8 @@ class WandbLogger(BaseDashboardLogger):
         # dictionary of dictionaries - record stats per step
         self.log_dict: dict[int, dict[str, Any]] = defaultdict(dict)
 
-    def model_weights(self, model: torch.nn.Module, step: int) -> None:
-        layer_num = 1
-        for name, param in model.named_parameters():
-            if param.numel() == 1:
-                self.add_scalars("weights", {f"layer{layer_num}-{name}/value": param.max().item()}, step)
-            else:
-                self.add_scalars("weights", {f"layer{layer_num}-{name}/max": param.max().item()}, step)
-                self.add_scalars("weights", {f"layer{layer_num}-{name}/min": param.min().item()}, step)
-                self.add_scalars("weights", {f"layer{layer_num}-{name}/mean": param.mean().item()}, step)
-                self.add_scalars("weights", {f"layer{layer_num}-{name}/std": param.std().item()}, step)
-                self.log_dict[step][f"weights/layer{layer_num}-{name}/param"] = wandb.Histogram(param.detach().tolist())
-                if param.grad is not None:
-                    self.log_dict[step][f"weights/layer{layer_num}-{name}/grad"] = wandb.Histogram(param.grad.tolist())
-            layer_num += 1
+    def add_histogram(self, title: str, values: torch.Tensor, step: int) -> None:
+        self.log_dict[step][title] = wandb.Histogram(values.tolist())
 
     def add_text(self, title: str, text: str, step: int) -> None:
         pass

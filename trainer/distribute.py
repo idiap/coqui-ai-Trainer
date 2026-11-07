@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import pathlib
 import subprocess
@@ -29,10 +30,14 @@ def distribute() -> None:
     command = [str(folder_path / args.script)] if (folder_path / args.script).is_file() else [args.script]
 
     # Pass all the TrainerArgs fields
-    command.append(f"--continue_path={args.continue_path}")
-    command.append(f"--restore_path={args.restore_path}")
-    command.append(f"--group_id=group_{group_id}")
-    command.append("--use_ddp=true")
+    command.extend(
+        (
+            f"--continue_path={args.continue_path}",
+            f"--restore_path={args.restore_path}",
+            f"--group_id=group_{group_id}",
+            "--use_ddp=true",
+        )
+    )
     command += unargs
     command.append("")
 
@@ -54,12 +59,9 @@ def distribute() -> None:
         p.wait()
 
 
-def get_gpus(args):
+def get_gpus(args: argparse.Namespace) -> list[str]:
     # set active gpus from CUDA_VISIBLE_DEVICES or --gpus
-    if "CUDA_VISIBLE_DEVICES" in os.environ and os.environ["CUDA_VISIBLE_DEVICES"] != "":
-        gpus = os.environ["CUDA_VISIBLE_DEVICES"]
-    else:
-        gpus = args.gpus
+    gpus = os.environ.get("CUDA_VISIBLE_DEVICES") or args.gpus
     return list(map(str.strip, gpus.split(",")))
 
 

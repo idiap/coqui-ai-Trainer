@@ -19,7 +19,6 @@ except ImportError as e:
 
 if TYPE_CHECKING:
     from clearml.logger import Logger
-    from clearml.task import Task
 
 
 class ClearMLLogger(BaseDashboardLogger):
@@ -37,7 +36,7 @@ class ClearMLLogger(BaseDashboardLogger):
         self,
         output_uri: str | os.PathLike[Any],
         local_path: str | os.PathLike[Any],
-        project_name: str,
+        project_name: str | None,
         task_name: str,
         tags: str | None = None,
     ) -> None:
@@ -50,38 +49,12 @@ class ClearMLLogger(BaseDashboardLogger):
             project_name=project_name, task_name=task_name, tags=self.tags, output_uri=str(output_uri)
         )
 
-        if tags:
-            for tag in tags.split(","):
-                self.run.add_tag(tag)
-
         # Get the logger for scalars, plots, etc.
         self.logger: Logger = self.run.get_logger()
 
-    def model_weights(self, model: torch.nn.Module, step: int) -> None:
-        """Log model weights to ClearML."""
-        layer_num = 1
-        for name, param in model.named_parameters():
-            if param.numel() == 1:
-                self.logger.report_scalar(f"layer{layer_num}-{name}", "value", param.item(), step)
-            else:
-                self.logger.report_scalar(f"layer{layer_num}-{name}", "max", param.max().item(), step)
-                self.logger.report_scalar(f"layer{layer_num}-{name}", "min", param.min().item(), step)
-                self.logger.report_scalar(f"layer{layer_num}-{name}", "mean", param.mean().item(), step)
-                self.logger.report_scalar(f"layer{layer_num}-{name}", "std", param.std().item(), step)
-                self.logger.report_histogram(
-                    f"layer{layer_num}-{name}",
-                    "param",
-                    iteration=step,
-                    values=param.detach().tolist(),
-                )
-                if param.grad is not None:
-                    self.logger.report_histogram(
-                        f"layer{layer_num}-{name}",
-                        "grad",
-                        iteration=step,
-                        values=param.grad.detach().tolist(),
-                    )
-            layer_num += 1
+    def add_histogram(self, title: str, values: torch.Tensor, step: int) -> None:
+        """Log a histogram to ClearML."""
+        self.logger.report_histogram(title, title, iteration=step, values=values.tolist())
 
     def add_scalar(self, title: str, value: float, step: int) -> None:
         """Log a scalar value to ClearML."""

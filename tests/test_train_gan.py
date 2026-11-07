@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from typing_extensions import override
 
 from tests.utils.mnist import get_mnist_samples
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
@@ -126,9 +127,11 @@ class GANModel(TrainerModel):
         generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
         return [discriminator_optimizer, generator_optimizer]
 
+    @override
     def get_criterion(self) -> list[nn.Module]:
         return [nn.BCELoss(), nn.BCELoss()]
 
+    @override
     def get_data_loader(
         self,
         config: TrainerConfig,
@@ -137,7 +140,7 @@ class GANModel(TrainerModel):
         samples: list[Any],
         verbose: bool = False,
     ):
-        return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)  # type: ignore[arg-type]
+        return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True, collate_fn=_collate_fn)  # ty: ignore[invalid-argument-type]
 
 
 def test_overfit_mnist_simple_gan(tmp_path):
@@ -158,11 +161,13 @@ def test_overfit_mnist_simple_gan(tmp_path):
 
     trainer.config.epochs = 1
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss_d1 = trainer.keep_avg_train["avg_loss_0"]
     loss_g1 = trainer.keep_avg_train["avg_loss_1"]
 
     trainer.config.epochs = 5
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss_d2 = trainer.keep_avg_train["avg_loss_0"]
     loss_g2 = trainer.keep_avg_train["avg_loss_1"]
 
@@ -190,11 +195,13 @@ def test_overfit_accelerate_mnist_simple_gan(tmp_path):
     )
 
     trainer.eval_epoch()
+    assert trainer.keep_avg_eval is not None
     loss_d1 = trainer.keep_avg_eval["avg_loss_0"]
     loss_g1 = trainer.keep_avg_eval["avg_loss_1"]
 
     trainer.config.epochs = 5
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss_d2 = trainer.keep_avg_train["avg_loss_0"]
     loss_g2 = trainer.keep_avg_train["avg_loss_1"]
 

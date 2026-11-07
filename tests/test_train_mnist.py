@@ -1,10 +1,12 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 import pytest
 import torch
 from torch.utils.data import DataLoader
+from typing_extensions import override
 
 from tests.utils.mnist import MnistModel, MnistModelConfig, get_mnist_samples
 from trainer import Trainer, TrainerArgs
@@ -29,9 +31,11 @@ def test_train_mnist(tmp_path):
     )
 
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss1 = trainer.keep_avg_train["avg_loss"]
 
     trainer.fit()
+    assert trainer.keep_avg_train is not None
     loss2 = trainer.keep_avg_train["avg_loss"]
 
     assert loss1 > loss2
@@ -51,9 +55,10 @@ def test_train_mnist(tmp_path):
         eval_samples=eval_samples,
     )
     trainer2.fit()
+    assert trainer2.keep_avg_train is not None
     loss3 = trainer2.keep_avg_train["avg_loss"]
 
-    args.continue_path = str(max(tmp_path.iterdir(), key=lambda p: p.stat().st_mtime))
+    args.continue_path = str(max(tmp_path.iterdir(), key=os.path.getmtime))
 
     trainer3 = Trainer(
         args,
@@ -66,6 +71,7 @@ def test_train_mnist(tmp_path):
         eval_samples=eval_samples,
     )
     trainer3.fit()
+    assert trainer3.keep_avg_train is not None
     loss4 = trainer3.keep_avg_train["avg_loss"]
 
     assert loss3 > loss4
@@ -92,6 +98,7 @@ def test_failed_run_is_removed(tmp_path, monkeypatch):
         parse_command_line_args=False,
     )
     handler = trainer._log_handler
+    assert handler is not None
     assert (trainer.output_path / "trainer_0_log.txt").is_file()
 
     def fail():
@@ -99,7 +106,7 @@ def test_failed_run_is_removed(tmp_path, monkeypatch):
         raise RuntimeError(msg)
 
     monkeypatch.setattr(trainer, "_fit", fail)
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError, match="boom"):
         trainer.fit()
 
     # the log file must be closed, otherwise the folder can't be removed on Windows
@@ -185,8 +192,9 @@ def test_eval_samples_required_when_run_eval_enabled(tmp_path):
 
 def test_empty_dataloader_raises_valueerror(tmp_path):
     class EmptyLoaderModel(MnistModel):
+        @override
         def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
-            return DataLoader([])  # type: ignore[arg-type]
+            return DataLoader([])  # ty: ignore[invalid-argument-type]
 
     config = MnistModelConfig()
     config.run_eval = False
@@ -206,7 +214,7 @@ def test_custom_eval_loader_allowed_without_eval_samples(tmp_path):
     config = MnistModelConfig()
     config.run_eval = True
     model = MnistModel()
-    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # type: ignore[arg-type]
+    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # ty: ignore[invalid-argument-type]
 
     # Providing custom eval_loader should succeed even when eval_samples=None
     trainer = Trainer(
@@ -226,7 +234,7 @@ def test_train_loader_without_eval_loader_raises_when_run_eval(tmp_path):
     config = MnistModelConfig()
     config.run_eval = True
     model = MnistModel()
-    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # type: ignore[arg-type]
+    dummy_loader = DataLoader([{"input": torch.zeros(1, 28, 28), "target": torch.zeros(1, dtype=torch.long)}])  # ty: ignore[invalid-argument-type]
 
     # Providing train_loader but omitting eval_loader and eval_samples must raise
     with pytest.raises(ValueError, match="Evaluation is enabled"):
@@ -246,7 +254,7 @@ def test_empty_eval_loader_raises_before_training_epochs(tmp_path):
     class EmptyEvalModel(MnistModel):
         def get_data_loader(self, config, *, is_eval=False, samples, verbose=False):
             if is_eval:
-                return DataLoader([])  # type: ignore[arg-type]
+                return DataLoader([])  # ty: ignore[invalid-argument-type]
             return super().get_data_loader(config, is_eval=is_eval, samples=samples, verbose=verbose)
 
     config = MnistModelConfig()
