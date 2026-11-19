@@ -11,13 +11,30 @@ if TYPE_CHECKING:
 
 # pylint: disable=too-many-public-methods
 class BaseDashboardLogger(ABC):
-    @abstractmethod
     def model_weights(self, model: "torch.nn.Module", step: int) -> None:
-        pass
+        """Log statistics and histograms of the model parameters and their gradients."""
+        for layer_num, (name, param) in enumerate(model.named_parameters(), start=1):
+            scope_name = f"layer{layer_num}-{name}"
+            if param.numel() == 1:
+                self.add_scalars(scope_name, {"value": param.item()}, step)
+                continue
+            stats = {
+                "max": param.max().item(),
+                "min": param.min().item(),
+                "mean": param.mean().item(),
+                "std": param.std().item(),
+            }
+            self.add_scalars(scope_name, stats, step)
+            self.add_histogram(f"{scope_name}/param", param.detach(), step)
+            if param.grad is not None:
+                self.add_histogram(f"{scope_name}/grad", param.grad.detach(), step)
 
     @abstractmethod
     def add_scalar(self, title: str, value: float, step: int) -> None:
         pass
+
+    def add_histogram(self, title: str, values: "torch.Tensor", step: int) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Log a histogram of values. No-op for backends without histogram support."""
 
     @abstractmethod
     def add_figure(self, title: str, figure: Figure, step: int) -> None:

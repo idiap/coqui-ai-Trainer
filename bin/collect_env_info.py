@@ -34,7 +34,7 @@ def cuda_info():
 def package_info():
     numpy_version = "N/A"
     with contextlib.suppress(ImportError):
-        import numpy as np  # noqa: PLC0415
+        import numpy as np  # ruff: ignore[import-outside-top-level]
 
         numpy_version = np.__version__
     return {

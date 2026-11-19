@@ -12,6 +12,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import MNIST
+from typing_extensions import override
 
 from trainer import Trainer, TrainerArgs, TrainerConfig, TrainerModel
 
@@ -125,7 +126,7 @@ class GANModel(TrainerModel):
         return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
 
     @torch.inference_mode()
-    def eval_step(self, batch, criterion):
+    def eval_step(self, batch, criterion, optimizer_idx=None):
         imgs, _ = batch
 
         # sample noise
@@ -145,10 +146,12 @@ class GANModel(TrainerModel):
         generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=0.001, betas=(0.5, 0.999))
         return [discriminator_optimizer, generator_optimizer]
 
+    @override
     def get_criterion(self):
         return nn.BCELoss()
 
-    def get_data_loader(self, config, *, is_eval, samples, verbose):
+    @override
+    def get_data_loader(self, config, *, is_eval=False, samples, verbose=True):
         return DataLoader(samples, batch_size=config.batch_size, drop_last=True, shuffle=True)
 
 

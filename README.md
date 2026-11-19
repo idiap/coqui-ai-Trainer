@@ -44,6 +44,7 @@ You just have to use the ```scaled_backward()``` function to handle mixed precis
 ```python
 ...
 
+
 def optimize(self, batch, trainer):
     imgs, _ = batch
 
@@ -86,6 +87,7 @@ def optimize(self, batch, trainer):
         trainer.optimizer[1].step()
         trainer.optimizer[1].zero_grad()
     return {"model_outputs": logits}, {"loss_gen": loss_gen, "loss_disc": loss_disc}
+
 
 ...
 ```
@@ -134,6 +136,7 @@ Here is how you provide an explicit call back to a 👟Trainer object for weight
 ```python
 def my_callback(trainer):
     print(" > My callback was called.")
+
 
 trainer = Trainer(..., callbacks={"on_init_end": my_callback})
 trainer.fit()

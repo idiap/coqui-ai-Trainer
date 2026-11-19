@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 from torch import nn
@@ -37,15 +37,15 @@ class TrainerModel(ABC, nn.Module):
         ...
         return outputs_dict
 
-    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:
+    def format_batch(self, batch: dict[str, Any] | list[Any]) -> dict[str, Any]:  # ruff: ignore[no-self-use]
         """Format batch returned by the data loader before sending it to the model.
 
         If not implemented, model uses the batch as is.
         Can be used for data augmentation, feature ectraction, etc.
         """
-        return batch  # type: ignore[return-value]
+        return cast("dict[str, Any]", batch)
 
-    def format_batch_on_device(self, batch: dict[str, Any]) -> dict[str, Any]:
+    def format_batch_on_device(self, batch: dict[str, Any]) -> dict[str, Any]:  # ruff: ignore[no-self-use]
         """Format batch on device before sending it to the model.
 
         If not implemented, model uses the batch as is.
@@ -165,7 +165,7 @@ class TrainerModel(ABC, nn.Module):
         msg = " [!] `optimize()` is not implemented."
         raise NotImplementedError(msg)
 
-    def scaled_backward(
+    def scaled_backward(  # ruff: ignore[no-self-use]
         self,
         loss: torch.Tensor,
         trainer: "Trainer",

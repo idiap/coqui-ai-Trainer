@@ -10,16 +10,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Lint check
         run: make lint
-  mypy:
+        env:
+          SKIP: ty  # runs in the typecheck job with all extras installed
+  typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup uv
         uses: ./.github/actions/setup-uv
       - name: Type check
-        run: make mypy
+        run: make typecheck

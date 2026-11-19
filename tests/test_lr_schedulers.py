@@ -55,8 +55,9 @@ def _test_with_epoch(scheduler, targets, epochs):
             scheduler.optimizer.step()
             scheduler.step(epoch)
             assert len(w) == 1
-            assert len(w[0].message.args) == 1
-            assert w[0].message.args[0] == EPOCH_DEPRECATION_WARNING
+            message = w[0].message
+            assert isinstance(message, Warning)
+            assert message.args == (EPOCH_DEPRECATION_WARNING,)
         if epoch in targets:
             assert scheduler.optimizer.param_groups[0]["lr"] == pytest.approx(targets[epoch])
 

@@ -88,7 +88,7 @@ def get_commit_hash() -> str:
 
 def get_experiment_folder_path(root_path: str | os.PathLike[Any], model_name: str) -> Path:
     """Get an experiment folder path with the current date and time."""
-    date_str = datetime.datetime.now().strftime("%B-%d-%Y_%I+%M%p")
+    date_str = datetime.datetime.now().astimezone().strftime("%B-%d-%Y_%I+%M%p")
     commit_hash = get_commit_hash()
     return Path(root_path) / f"{model_name}-{date_str}-{commit_hash}"
 
